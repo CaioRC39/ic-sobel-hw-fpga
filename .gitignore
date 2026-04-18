@@ -1,0 +1,5 @@
+sim/
+*.vcd
+*.fst
+*.out
+__pycache__/
