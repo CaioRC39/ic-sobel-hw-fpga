@@ -8,10 +8,15 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     make build-essential python3-pip jq wget ripgrep \
     dbus-x11
 
-# Node.js já vem via feature, mas garantimos
-npm --version
+# === Instala LaTeX completo (essencial para artigo científico) ===
+apt-get install -y \
+    texlive-full \
+    latexmk \
+    texlive-lang-portuguese \
+    texlive-science \
+    texlive-bibtex-extra
 
-# === Instala cocotb (já tínhamos) ===
+# === Instala cocotb ===
 pip3 install --break-system-packages cocotb cocotb-test pytest
 
 # === Instala OpenClaude CLI (global) ===
@@ -26,8 +31,10 @@ wget -q "https://github.com/chipsalliance/verible/releases/download/${VERIBLE_RE
 tar -C /usr/local --strip-components=1 -xf $VERIBLE_TAR
 rm -f $VERIBLE_TAR
 
-echo "✅ OpenClaude + SystemVerilog instalado com sucesso!"
+echo "✅ OpenClaude + SystemVerilog + LaTeX instalado com sucesso!"
 echo "   Comandos úteis:"
 echo "     openclaude                  → Inicia o agente interativo"
 echo "     openclaude --help           → Lista todos os comandos"
 echo "     make help                   → Comandos do projeto"
+echo "     pdflatex --version          → Verifica LaTeX"
+echo "     latexmk -pdf article.tex    → Compila artigo"
