@@ -4,6 +4,7 @@
 
 # ===================== CONFIGURAÇÕES =====================
 SIMULATOR     ?= icarus          # icarus ou verilator (para simulação tradicional)
+SIM           ?= icarus          # usado pelo alvo cocotb (cocotb-test)
 TOPLEVEL      ?= top             # Nome do módulo top-level
 WAVES         ?= 1               # 1 = gera ondas
 
@@ -24,7 +25,7 @@ all: sim
 
 format:
 	@echo "Formatando arquivos SystemVerilog..."
-	$(VERIBLE_FMT) --inplace $(RTL_DIR)/*.sv $(TB_DIR)/*.sv 2>/dev/null || true
+	$(VERIBLE_FMT) --inplace $(shell find $(RTL_DIR) $(TB_DIR) -name '*.sv' 2>/dev/null) 2>/dev/null || true
 
 clean:
 	rm -rf $(SIM_DIR)/*.out $(SIM_DIR)/*.vcd $(SIM_DIR)/*.fst $(SIM_DIR)/obj_dir __pycache__/
@@ -44,7 +45,8 @@ help:
 sim-icarus:
 	mkdir -p $(SIM_DIR)
 	iverilog -g2012 -Wall -I$(INCLUDE_DIR) -o $(SIM_DIR)/sim.out \
-		$(RTL_DIR)/*.sv $(TB_DIR)/*.sv
+		$(shell find $(RTL_DIR) -name '*.sv' 2>/dev/null) \
+		$(shell find $(TB_DIR) -name '*.sv' 2>/dev/null)
 	cd $(SIM_DIR) && vvp sim.out
 
 sim-verilator:
@@ -58,16 +60,16 @@ else
 endif
 
 # ===================== COCOTB =====================
+# Cada tb_python/test_*.py e autocontido: chama cocotb_test.simulator.run()
+# com seus proprios verilog_sources/toplevel/parameters. O pytest apenas
+# descobre e roda todos os arquivos test_*.py da pasta - nao ha mais um
+# TOPLEVEL/MODULE globais (cada teste define os seus). A env var SIM
+# ainda funciona (lida automaticamente por cocotb-test) para trocar de
+# simulador, ex: make cocotb SIM=verilator.
 cocotb:
 	mkdir -p $(SIM_DIR)
-	@echo "Rodando testes cocotb com SIM=$(SIM) ..."
-	@cd $(TB_PYTHON_DIR) && \
-		SIM=$(SIM) \
-		TOPLEVEL_LANG=verilog \
-		VERILOG_SOURCES="$(shell pwd)/$(RTL_DIR)/*.sv" \
-		TOPLEVEL=$(TOPLEVEL) \
-		MODULE=$(shell ls *.py | sed 's/\.py$$//') \
-		pytest -q --tb=no
+	@echo "Rodando testes cocotb (SIM=$(strip $(SIM))) ..."
+	cd $(TB_PYTHON_DIR) && SIM=$(strip $(SIM)) python3 -m pytest -q
 
 # Alias para facilitar
 test: cocotb
