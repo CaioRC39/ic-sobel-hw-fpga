@@ -233,6 +233,62 @@ S_LOAD_WIN (novo pixel) OU S_IDLE (se !valid_in)
 > O nome começa com `_` de propósito: pytest só coleta arquivos
 > `test_*.py`/`*_test.py` por padrão, então este módulo nunca é
 > confundido com um testbench em si.
+>
+> **Quinta pegadinha / princípio geral** (surgiu ao investigar arquivos
+> recuperados após perda parcial do repositório, sessão de
+> `kernel_rom.sv`/`mac_control_fsm.sv`): existe uma diferença importante
+> entre um **alarme passivo** (`$error`, só existe em simulação, só
+> *avisa* que algo errado aconteceu, depois do fato) e uma **trava
+> ativa** (garante, estruturalmente, que a saída de um módulo nunca
+> pode causar dano em quem a consome, mesmo que o consumidor não
+> verifique nada — sobrevive em hardware sintetizado, não só em
+> simulação). Os dois são complementares, não substitutos um do outro:
+> a trava ativa evita o problema; o alarme torna o problema visível
+> rapidamente, sem depender de alguém lembrar de checar um sinal
+> específico.
+>
+> O caso concreto que gerou este princípio: `kernel_rom.sv` recebe
+> `i_tap_idx` (3 bits, valores 0..7) mas só 6 desses valores (0..5) têm
+> significado real. A primeira versão da proteção só tinha o alarme
+> (`$error` + saída sentinela fora do intervalo válido, `4'hF`) — o que
+> já evita propagação de `X`, mas ainda deixava um valor "estranho"
+> vazar pra fora do módulo, que um consumidor futuro descuidado
+> poderia usar pra indexar um array sem checar limites. A trava ativa
+> final usa 2 partes: (1) a saída "de dado" (`o_win_pos`) sempre fica
+> dentro do intervalo seguro (0..8), então **nenhum uso possível dela
+> pode causar um acesso fora dos limites de um array**, mesmo por um
+> consumidor que não verifica nada; (2) uma saída nova e dedicada,
+> **sintetizável** (`o_addr_valid`), separa "o dado é seguro de usar"
+> de "o dado é *correto*" — sem essa segunda saída, voltar ao valor
+> seguro (`0`) sozinho reintroduziria a ambiguidade original (`0` é
+> tanto o valor de fallback quanto a posição real do tap 0 legítimo).
+>
+> **Princípio geral, pra reaplicar em módulos futuros deste projeto**
+> (pipeline, paralela, MMIO): sempre que uma porta tiver mais
+> combinações de bits do que valores com significado real (o mesmo
+> "critério (a)" da seção 15.4 do `CLAUDE.md` — gap entre o que o sinal
+> *consegue* representar e o que *deveria* representar), pergunte não
+> só "isso precisa de um alarme de simulação?" mas também "a saída
+> correspondente, sozinha, já é impossível de usar de forma perigosa,
+> mesmo sem o alarme?". Nem todo contrato violável precisa das 2
+> camadas (o custo de implementar as 2 só compensa quando o dano
+> potencial do outro lado é real — ex: indexação de array, não um
+> resultado aritmético que só fica "meio errado"), mas vale a pergunta
+> explícita a cada novo módulo, não só confiar que ninguém vai violar o
+> contrato.
+>
+> **Caso irmão, mesma sessão** (ilustra por que "ninguém espera que o
+> contrato seja violado hoje, mas o alarme existe pra pegar quando
+> alguém violar no futuro" não é só retórica): a Investigação 1 desta
+> sessão provou, por construção, que `mac_control_fsm.sv` (único
+> consumidor de `kernel_rom` hoje) nunca manda `i_tap_idx>5` — ou seja,
+> o alarme de `kernel_rom` não está pegando nenhum bug que existe hoje.
+> Mas essa prova depende inteiramente da faixa de estados usada em
+> `is_gx_mac`/`is_gy_mac` continuar correta — um refactor futuro nos
+> estados da FSM (ex: inserir um estado novo sem atualizar essa faixa)
+> quebraria essa garantia silenciosamente, sem tocar em `kernel_rom.sv`
+> nenhuma vez. A proteção não foi feita pro bug de hoje; foi feita pro
+> bug que um refactor descuidado pode introduzir amanhã.
 
 ### 4.1 `line_buffer_2line.sv` (comum às 3 arquiteturas)
 
@@ -613,75 +669,173 @@ reaproveitar o `mac_unit` para Gy — senão o valor de Gx se perde.
 
 ### 5.2 `mac_control_fsm.sv`
 
+**Status:** implementado e testado (16 estados, 15 ciclos úteis/pixel —
+ver seção 3 para o diagrama de estados). Recuperado após perda parcial
+do repositório e corrigido em sessão de investigação com 3 bugs reais
+encontrados por execução de verdade (nenhum hipotético).
+
 **Interface:**
 ```systemverilog
 module mac_control_fsm #(
-    parameter int KERNEL_DEPTH = 9
+    parameter int DATA_WIDTH  = 8,
+    parameter int COEFF_WIDTH = 3,
+    parameter int ACC_WIDTH   = 11
 )(
     input  logic                    clk,
     input  logic                    rst_n,
-    input  logic                    valid_in,       // Nova janela disponível
-    input  logic                    last_pixel,     // Último pixel da linha
-    input  logic                    last_line,      // Última linha do frame
-    output logic                    mac_enable,     // Enable para MAC unit
-    output logic [$clog2(KERNEL_DEPTH):0] kernel_addr, // Endereço kernel ROM
-    output logic                    select_gy,      // 0=Gx, 1=Gy
-    output logic                    acc_clear,      // Limpa acumulador
-    output logic                    acc_store_gx,   // Armazena resultado Gx
-    output logic                    acc_store_gy,   // Armazena resultado Gy
-    output logic                    output_valid,   // Pixel de saída válido
-    output logic                    busy            // Core ocupado
+    input  logic                    i_valid,
+    input  logic [9*DATA_WIDTH-1:0] i_window,   // vetor achatado, layout de window_3x3
+    output logic                    o_ready,    // 1 so durante S_IDLE
+    output logic                    o_valid,    // 1 so durante S_OUTPUT
+    output logic [DATA_WIDTH-1:0]   o_pixel
 );
 ```
 
-**Funcionamento:**
-- Gera endereços sequenciais para kernel ROM (0 a 8)
-- Alterna `select_gy` após 9 ciclos (Gx → Gy)
-- Controla `acc_clear` no início de cada convolução
-- Pulsa `acc_store_gx`/`acc_store_gy` no final de cada convolução
-- Asserta `output_valid` por 1 ciclo no estado S_OUTPUT
+Instancia internamente `mac_unit` + `kernel_rom` + 2×`abs_saturate` +
+`magnitude_l1` (não é FSM pura de propósito, ver `RESUMO_ESTADO_PROJETO.md`).
 
-### 5.3 `kernel_rom.sv` (comum, ainda não implementado)
+#### Bug #1 (real, encontrado ao rodar de verdade): `win_reg` capturando 1 ciclo atrasado
 
-**Correção em relação a versões anteriores deste documento:** este
-módulo ainda **não existe** no repositório (nenhum RTL foi criado além
-de `line_buffer_2line.sv` e `window_3x3.sv`, seção 4). Recomendação
-levantada durante o projeto dos módulos comuns: por serem só 18
-constantes pequenas (9 coeficientes de Gx + 9 de Gy), um **lookup
-combinacional** (`localparam` indexado, sem latência de leitura) é mais
-simples e evita ter que alinhar 1 ciclo extra de latência de ROM
-síncrona na FSM — mas isso é decisão a confirmar quando este módulo for
-de fato implementado (ver seção 11, próximos passos).
+**Sintoma:** `magnitude` sempre saía `0`, para qualquer janela de
+entrada — confirmado com `test_cycle_timing` esperando `255` e obtendo
+`0`.
 
-### 5.4 `sobel_multicycle.sv` (Top-level da arquitetura)
+**Causa raiz** (confirmada por trace ciclo-a-ciclo, não só leitura de
+código): `win_reg` capturava `i_window` na condição
+`state_r == S_LOAD_WIN` — ou seja, **1 ciclo inteiro depois** de
+`i_valid` ter sido aceito em `S_IDLE`. O contrato de interface já
+documentado no cabeçalho do módulo garante `i_window` válido só
+**enquanto `o_ready=1`** (durante `S_IDLE`), não no ciclo seguinte.
+Como `window_3x3` não tem backpressure (continua deslizando
+independente da FSM), por essa altura `i_window` já teria avançado
+pra janela seguinte no uso real — no teste, já tinha sido zerado. O
+acumulador do `mac_unit` sempre multiplicava por pixel=0.
 
-**Interface:**
+**Correção:** capturar `win_reg` na própria transição de saída de
+`S_IDLE` (`state_r == S_IDLE && i_valid`), não na entrada em
+`S_LOAD_WIN`:
+```diff
+- end else if (state_r == S_LOAD_WIN) begin
++ end else if (state_r == S_IDLE && i_valid) begin
+```
+`S_LOAD_WIN` continua existindo como estado — passa a servir só pra
+dar 1 ciclo de folga pro `i_clear` do `mac_unit` assentar antes do
+primeiro MAC, não mais literalmente "o estado onde a janela é
+carregada" (que passa a acontecer 1 ciclo antes).
+
+**Alternativas descartadas** (discutidas antes de decidir):
+
+| Alternativa | Por que foi descartada |
+|---|---|
+| Exigir que quem chama segure `i_window` por 2 ciclos (o atual + `S_LOAD_WIN`) | Contradiz o próprio contrato já documentado; empurraria um buffer extra pro futuro `sobel_multicycle.sv` sem necessidade |
+| Eliminar `S_LOAD_WIN`, capturando direto na saída de `S_IDLE` e indo pro 1º MAC no mesmo estado | Reabriria a contagem de 16 estados/15 ciclos já fechada e testada (`test_o_ready_low_while_busy`); risco de `i_clear` e o 1º `i_mac_en` caírem no mesmo ciclo (prioridade de `clear` no `mac_unit` descartaria o 1º MAC) |
+
+#### Bug #3 (real, exposto só depois de corrigir o Bug #1 e o `NameError` do teste): violação de contrato entre janelas consecutivas
+
+**Sintoma:** ao corrigir `test_various_windows` pra reusar
+`_feed_and_wait` num laço (ver Bug #2, seção do testbench), o `$error`
+de contrato do próprio `mac_control_fsm.sv` disparava
+(`i_valid ativo com o_ready=0`), e `o_valid` nunca chegava a disparar
+pra 2ª janela em diante.
+
+**Causa raiz:** `_feed_and_wait` retornava assim que detectava
+`o_valid=1` — exatamente no ciclo em que `state_r == S_OUTPUT`. Mas
+`state_r` só volta pra `S_IDLE` (`o_ready` só volta a `1`) na borda
+**seguinte** (transição incondicional `S_OUTPUT -> S_IDLE`). Chamar
+`_feed_and_wait` de novo, em sequência, ligava `i_valid=1` ainda com
+`o_ready=0`.
+
+**Correção (Opção B, escolhida por afetar a raiz do padrão em vez de
+cada chamador individualmente):** `_feed_and_wait` agora espera
+`o_ready` voltar a `1` antes de retornar, depois de já ter capturado
+`pixel`/`cycles` (a contagem de ciclos retornada não muda — ver
+`tb_python/test_mac_control_fsm.py`).
+
+Ver também a nota metodológica da seção 4 ("Quinta pegadinha") sobre a
+distinção entre alarme passivo e trava ativa, e por que a Investigação
+1 (prova de que `tap_idx` gerado aqui nunca ultrapassa 5) é uma
+garantia condicionada à estrutura atual dos estados, não permanente.
+
+### 5.3 `kernel_rom.sv`
+
+**Status:** implementado e testado. Recuperado após perda parcial do
+repositório (interface real, diferente da reconstrução de uma sessão
+anterior — ver histórico de decisões abaixo) e reforçado com trava
+ativa nesta sessão.
+
+**Interface (final, com a trava ativa):**
 ```systemverilog
-module sobel_multicycle #(
-    parameter int IMG_WIDTH  = 640,
-    parameter int IMG_HEIGHT = 480,
-    parameter int DATA_WIDTH = 8
+module kernel_rom #(
+    parameter int COEFF_WIDTH = 3
 )(
-    input  logic                    clk,
-    input  logic                    rst_n,
-    input  logic                    valid_in,
-    input  logic [DATA_WIDTH-1:0]   pixel_in,
-    input  logic                    last_pixel_in,
-    input  logic                    last_line_in,
-    output logic                    valid_out,
-    output logic [DATA_WIDTH-1:0]   pixel_out,
-    output logic                    last_pixel_out,
-    output logic                    last_line_out,
-    output logic                    busy,
-    output logic                    frame_done
+    input  logic                          i_gy,         // 0=tabela de Gx, 1=tabela de Gy
+    input  logic        [            2:0] i_tap_idx,    // 0..5
+    output logic        [            3:0] o_win_pos,    // posicao 0..8 na janela - SEMPRE valida
+    output logic signed [COEFF_WIDTH-1:0] o_coeff,
+    output logic                          o_addr_valid  // 1=tap real, 0=i_tap_idx fora de 0..5
 );
 ```
 
-**Conexões internas:**
-1. `line_buffer_2line` → `window_3x3` → janela 3×3
-2. `mac_control_fsm` → controla `mac_unit` + `kernel_rom`
-3. Acumuladores Gx/Gy registrados
-4. `magnitude_l1` → `abs_saturate` → saída
+**O que faz:** lookup puramente combinacional (sem `clk`/`rst_n`) dos 6
+taps não-nulos de cada kernel Sobel (Gx ou Gy, escolhido por `i_gy`),
+retornando `(posição na janela 3×3, coeficiente)` de cada tap,
+endereçado por `i_tap_idx` (0..5).
+
+**Histórico da interface:** uma sessão anterior (antes da perda dos
+arquivos) havia reconstruído este módulo do zero com uma interface
+diferente (`i_select_gy`/`i_addr`/`o_pos`, parâmetros `ADDR_WIDTH`/
+`POS_WIDTH` explícitos). Ao recuperar os arquivos reais do projeto,
+ficou claro que a interface verdadeira (já integrada a
+`mac_control_fsm.sv`) usa `i_gy`/`i_tap_idx`/`o_win_pos`, com larguras
+fixas (não parametrizadas) — mesma convenção de literais fixos já usada
+em `mac_unit.sv`. A reconstrução anterior foi descartada em favor dos
+arquivos recuperados, que são consistentes entre si.
+
+**Trava ativa (não só alarme passivo) — evolução em 2 etapas nesta sessão:**
+
+1. **Primeira correção:** `i_tap_idx` tem 3 bits (permite 0..7), mas só
+   0..5 têm significado (6 taps por kernel) — gap entre o que o sinal
+   representa e o que deveria representar. Adicionado `$error` de
+   simulação + `default` seguro no `case` (sem propagar `X`).
+2. **Reforço (trava ativa de verdade):** o `default` inicial usava um
+   sentinela fora do intervalo válido (`o_win_pos=4'hF`) — tornava o
+   erro visível, mas deixava um valor perigoso vazar pra fora do
+   módulo (se um consumidor futuro indexasse um array de 9 posições
+   com esse valor, sem checar nada antes, estouraria os limites).
+   Corrigido para: `o_win_pos` **sempre** dentro de 0..8 (nunca causa
+   um acesso fora dos limites em nenhum consumidor, mesmo sem
+   verificação nenhuma do lado de quem chama) + saída nova
+   `o_addr_valid` (**sintetizável**, ao contrário do `$error` — separa
+   "seguro de usar" de "correto", já que `o_win_pos=0` sozinho é
+   ambíguo entre "endereço inválido" e "tap 0 legítimo").
+
+```diff
+  default: begin
+-   o_win_pos = 4'hF;  // sentinela fora de 0..8
+-   o_coeff   = '0;
++   o_win_pos    = 4'd0;  // valor seguro, sempre dentro de 0..8
++   o_coeff      = '0;
++   o_addr_valid = 1'b0;
+  end
+```
+
+**Não foi necessário alterar `mac_control_fsm.sv`:** a porta nova
+(`o_addr_valid`) simplesmente fica sem conexão na instanciação
+existente — legal em SystemVerilog (saída não conectada não é erro de
+compilação). `mac_control_fsm.sv` continua confiando na prova de que
+nunca envia `i_tap_idx>5` (ver "Investigação 1" na nota metodológica da
+seção 4); qualquer consumidor futuro mais cauteloso pode conectar
+`o_addr_valid` sem precisar de nenhuma mudança aqui.
+
+Ver a nota metodológica completa (5ª pegadinha) na seção 4 sobre a
+distinção entre alarme passivo e trava ativa, e o princípio geral pra
+reaplicar em módulos futuros.
+
+| Alternativa considerada | Por que foi descartada |
+|---|---|
+| Só o `$error` (sem trava ativa) | Deixa a decisão de proteção inteiramente do lado do consumidor — contraria o objetivo de "quem instancia `kernel_rom` não precisa reimplementar essa checagem" |
+| Sentinela fora de range sem `o_addr_valid` (estado da 1ª correção) | Torna o erro visível, mas não impede um consumidor descuidado de causar dano real (acesso fora dos limites de array) |
+| Proteção redundante também em `mac_control_fsm.sv` (checar `kr_win_pos` antes de indexar `win_reg`) | Redundante hoje, dado que `kernel_rom` já é instanciado *dentro* de `mac_control_fsm` (qualquer simulação que exercitasse o bug já dispararia o `$error` na mesma rodada); reconsiderar só se outro consumidor futuro não reusar a mesma lógica de geração de endereço já provada segura |
 
 ---
 
@@ -880,8 +1034,8 @@ set_false_path -from [get_ports rst_n]
 - [x] `mac_unit.sv` - testado, 0 DSPs por construção
 - [x] `abs_saturate.sv` - módulo comum, testado
 - [x] `magnitude_l1.sv` - módulo comum, testado
-- [ ] `mac_control_fsm.sv` - FSM completa com otimização zeros
-- [ ] `kernel_rom.sv` (ou lookup combinacional equivalente)
+- [x] `mac_control_fsm.sv` - FSM completa, testada (16 estados, 15 ciclos úteis/pixel) - 2 bugs reais corrigidos nesta sessão (seção 5.2)
+- [x] `kernel_rom.sv` - lookup combinacional com trava ativa, testado (seção 5.3)
 - [ ] `sobel_multicycle.sv` - Integração top-level
 - [x] Verible lint **ZERO warnings** (todos os módulos criados até agora)
 - [ ] Verilator `--lint-only -Wall` **ZERO warnings**
@@ -892,6 +1046,8 @@ set_false_path -from [get_ports rst_n]
 - [x] `test_mac_unit.py` - Todos os testes passando
 - [x] `test_abs_saturate.py` - Todos os testes passando
 - [x] `test_magnitude_l1.py` - Todos os testes passando
+- [x] `test_kernel_rom.py` - Todos os testes passando (4 corrotinas, 2 executores: normal + violação isolada)
+- [x] `test_mac_control_fsm.py` - Todos os testes passando (5 corrotinas, 2 executores: normal + violação isolada)
 - [ ] `test_sobel_multicycle.py` - Todos os testes passando
 - [ ] Cobertura código ≥ 95%
 - [ ] Cobertura FSM 100%
@@ -917,11 +1073,7 @@ set_false_path -from [get_ports rst_n]
    separados ou fundidos (afeta o total de ciclos/pixel)
 5. **Criar `kernel_rom.sv`** (ou lookup combinacional) - decisão de
    design em aberto, ver seção 5.3
-6. **Criar `mac_control_fsm.sv`** - FSM otimizada pulando zeros, com as
-   correções do item 4, sequenciando `i_clear`/`i_mac_en`/`i_coeff` do
-   `mac_unit`, salvando o resultado de Gx antes de reaproveitá-lo para
-   Gy (ver seção 5.1), e usando `abs_saturate`/`magnitude_l1` (seções
-   4.3, 4.4) no estágio de finalização
+6. ~~Criar `mac_control_fsm.sv`~~ - **feito**, testado, 2 bugs reais corrigidos em sessão de recuperação (seção 5.2)
 7. **Criar `sobel_multicycle.sv`** - Integração dos módulos, incluindo
    o handshake necessário entre o stream de entrada contínuo e a FSM
    (que leva múltiplos ciclos por janela - ver discussão sobre
