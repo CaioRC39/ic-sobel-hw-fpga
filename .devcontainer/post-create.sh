@@ -16,11 +16,8 @@ apt-get install -y \
     texlive-science \
     texlive-bibtex-extra
 
-# === Instala cocotb ===
-pip3 install --break-system-packages cocotb cocotb-test pytest
-
-# === Instala OpenClaude CLI (global) ===
-npm install -g @gitlawb/openclaude
+# === Instala dependências Python ===
+pip3 install --break-system-packages -r requirements.txt
 
 # === Instala Verible (mais recente) ===
 ARCH=$(uname -m)
@@ -31,10 +28,8 @@ wget -q "https://github.com/chipsalliance/verible/releases/download/${VERIBLE_RE
 tar -C /usr/local --strip-components=1 -xf $VERIBLE_TAR
 rm -f $VERIBLE_TAR
 
-echo "✅ OpenClaude + SystemVerilog + LaTeX instalado com sucesso!"
+echo "✅ SystemVerilog + LaTeX + Python instalado com sucesso!"
 echo "   Comandos úteis:"
-echo "     openclaude                  → Inicia o agente interativo"
-echo "     openclaude --help           → Lista todos os comandos"
 echo "     make help                   → Comandos do projeto"
 echo "     pdflatex --version          → Verifica LaTeX"
 echo "     latexmk -pdf article.tex    → Compila artigo"
