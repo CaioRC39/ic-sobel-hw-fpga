@@ -205,6 +205,69 @@ async def test_sustained_contract_violation_detected(dut):
         for col in range(IMG_WIDTH):
             await _step(dut, 1, curr=(row * IMG_WIDTH + col) % 256, line1=0, line2=0)
 
+@cocotb.test()
+async def test_ready_gating_prevents_manual_gap_calculation(dut):
+    """Prova da trava ativa (Caminho B, ver docs/ARQUITETURA_MULTICICLO.md
+    secao 4.2): alimenta o modulo SEM nenhum calculo manual de quando
+    inserir gap - simplesmente respeita o_ready a cada ciclo, do mesmo
+    jeito que um consumidor real (ex: sobel_multicycle) vai fazer. Se
+    o_ready realmente reflete o contrato interno corretamente, a
+    geometria das janelas produzidas deve ser IDENTICA a
+    test_geometry_with_zero_padding (que calcula o gap manualmente) -
+    E nenhum $error deve disparar."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await _reset(dut)
+
+    image = (np.arange(1, IMG_HEIGHT * IMG_WIDTH + 1) % 251).reshape(
+        IMG_HEIGHT, IMG_WIDTH
+    )
+    expected = _build_reference_windows(image)
+
+    captured = []
+    row, col = 0, 0
+    total_real_pixels = IMG_HEIGHT * IMG_WIDTH
+    fed = 0
+
+    # Nao ha NENHUMA logica de "ultima coluna -> insere gap" aqui -
+    # o teste so olha o_ready a cada ciclo, exatamente como um
+    # consumidor real deveria fazer.
+    while fed < total_real_pixels:
+        await ReadOnly()
+        ready = int(dut.o_ready.value)
+        await NextTimeStep()
+
+        if ready:
+            curr = int(image[row, col])
+            line1 = int(image[row - 1, col]) if row >= 1 else 0
+            line2 = int(image[row - 2, col]) if row >= 2 else 0
+            out_valid, out_window = await _step(dut, 1, curr, line1, line2)
+            fed += 1
+            col += 1
+            if col == IMG_WIDTH:
+                col = 0
+                row += 1
+        else:
+            # respeita o_ready=0: nao apresenta pixel novo neste ciclo
+            out_valid, out_window = await _step(dut, 0, 0, 0, 0)
+
+        if out_valid:
+            captured.append(out_window)
+
+    # drena o que ainda estiver "em transito" apos o ultimo pixel real
+    for _ in range(5):
+        out_valid, out_window = await _step(dut, 0, 0, 0, 0)
+        if out_valid:
+            captured.append(out_window)
+
+    captured = captured[IMG_WIDTH:]  # mesmo descarte de test_geometry_with_zero_padding
+
+    assert len(captured) == len(expected), (
+        f"respeitando so o_ready (sem calculo manual de gap): "
+        f"{len(captured)} janelas capturadas, esperado {len(expected)}"
+    )
+    for idx, (got, exp) in enumerate(zip(captured, expected)):
+        assert got == exp, f"idx={idx}: obtido={got} esperado={exp}"
+
 
 def test_window_3x3_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -216,7 +279,8 @@ def test_window_3x3_runner():
     # normal de `make cocotb` imprimiria "ERROR:" no log - esperado/
     # intencional, mas pareceria uma falha real.
     run_isolated(
-        "test_reset_state,test_geometry_with_zero_padding,test_multiple_gap_cycles",
+        "test_reset_state,test_geometry_with_zero_padding,test_multiple_gap_cycles,"
+        "test_ready_gating_prevents_manual_gap_calculation",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "window_3x3.sv"),
         ],

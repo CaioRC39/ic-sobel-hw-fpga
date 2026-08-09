@@ -35,6 +35,14 @@
 // esse gap, o ciclo fantasma de borda direita nao tem onde acontecer e
 // um pixel real seria descartado (ver assertion de simulacao abaixo).
 //
+// ALTERADO AQUI: alem do $error (alarme passivo, so em simulacao), o
+// modulo agora expoe o_ready (trava ativa, sintetizavel, sobrevive em
+// hardware real) - o jeito CORRETO de nunca violar o contrato acima e
+// simplesmente nunca apresentar i_valid=1 quando o_ready=0, em vez de
+// calcular manualmente quando o gap deveria acontecer. Quem respeita
+// o_ready nunca viola o contrato, mesmo sem saber nada sobre
+// col_cnt_r ou IMG_WIDTH.
+//
 // Este modulo NAO trata a borda inferior do frame (ultima linha da
 // imagem) - isso exige uma linha fantasma extra de zeros ao final do
 // frame, responsabilidade de um controlador de nivel superior (fora do
@@ -49,6 +57,7 @@ module window_3x3 #(
     input  logic [  DATA_WIDTH-1:0] i_curr,
     input  logic [  DATA_WIDTH-1:0] i_line1,
     input  logic [  DATA_WIDTH-1:0] i_line2,
+    output logic                    o_ready,
     output logic                    o_valid,
     output logic [9*DATA_WIDTH-1:0] o_window
 );
@@ -131,6 +140,16 @@ module window_3x3 #(
   end
 
   assign o_valid = valid_r;
+
+  // ALTERADO AQUI: trava ativa - "pronto pra receber pixel novo" e o
+  // OPOSTO de "estou no ciclo fantasma agora". phantom_pending_r ja
+  // existia internamente (o modulo ja se protegia sozinho, dando
+  // prioridade ao ciclo fantasma mesmo sem isto) - esta atribuicao so
+  // torna essa protecao OBSERVAVEL por quem instancia o modulo, sem
+  // adicionar nenhum flip-flop novo (reaproveita um sinal que ja
+  // existia). Ver docs/ARQUITETURA_MULTICICLO.md, secao 4.2, para o
+  // contrato completo.
+  assign o_ready = !phantom_pending_r;
 
   // Concatenacao MSB->LSB na ordem linha-major (ver comentario no
   // cabecalho do modulo para o layout exato de bits).

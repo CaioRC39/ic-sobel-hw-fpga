@@ -277,9 +277,6 @@ comando de novo antes de conferir o lint.
 ## Cola rápida (depois de já ter lido tudo acima uma vez)
 
 ```bash
-# instalar numpy (so 1a vez, se estiver faltando)
-pip3 install --break-system-packages numpy
-
 # rodar tudo
 make cocotb
 
