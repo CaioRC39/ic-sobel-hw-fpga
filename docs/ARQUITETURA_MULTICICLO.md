@@ -8,14 +8,14 @@
 
 ## 1. Visão Geral
 
-A arquitetura **multiciclo** reutiliza uma única unidade MAC (Multiply-Accumulate) para processar os 9 coeficientes do kernel Sobel sequencialmente, alternando entre Gx e Gy. É a arquitetura de **menor área**, ideal para FPGAs pequenas ou quando o throughput de 1 pixel a cada ~11 ciclos é aceitável.
+A arquitetura **multiciclo** reutiliza uma única unidade MAC (Multiply-Accumulate) para processar os 9 coeficientes do kernel Sobel sequencialmente, alternando entre Gx e Gy. É a arquitetura de **menor área**, ideal para FPGAs pequenas ou quando o throughput de 1 pixel a cada ~15 ciclos é aceitável.
 
 ### 1.1 Características Principais
 
 | Métrica | Valor |
 |---------|-------|
-| **Latência** | ~11 ciclos/pixel (após pipeline de line buffer + window) |
-| **Throughput** | 1 pixel / 11 ciclos |
+| **Latência** | 15 ciclos/pixel (após pipeline de line buffer + window) — valor validado por teste real, ver §5.2 e `test_mac_control_fsm.py::test_cycle_timing` |
+| **Throughput** | 1 pixel / 15 ciclos |
 | **Área (LUTs)** | ~200 |
 | **FFs** | ~150 |
 | **DSPs** | 1 |

@@ -1,5 +1,5 @@
 {
-    "name": "SystemVerilog + OpenClaude",
+    "name": "SystemVerilog",
     "image": "ubuntu:24.04",
     "runArgs": [
         "--name",
@@ -19,10 +19,8 @@
             "extensions": [
                 "mshr-h.veriloghdl",
                 "bmpenuelas.systemverilog-formatter-vscode"
-                // A extensão oficial do OpenClaude ainda não está no Marketplace,
-                // mas você pode instalar manualmente depois se quiser a UI gráfica
             ]
         }
     },
-    "postAttachCommand": "echo '✅ Container pronto! LaTeX, Verilator, cocotb e OpenClaude estão disponíveis.'"
+    "postAttachCommand": "echo '✅ Container pronto! LaTeX, Verilator e cocotb estão disponíveis.'"
 }
