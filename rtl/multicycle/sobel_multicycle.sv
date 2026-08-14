@@ -153,12 +153,16 @@ module sobel_multicycle #(
   // dia deixar de valer (ex: mudanca futura no gating de accept_sample
   // ou no proprio window_3x3), uma 2a janela chegaria com o buffer ja
   // ocupado e seria perdida silenciosamente sem este alarme.
+  // ALTERADO AQUI (F-09/A-09): mesmo falso-positivo de SYNCASYNCNET que em
+  // window_3x3.sv/mac_control_fsm.sv - ver justificativa la.
+  /* verilator lint_off SYNCASYNCNET */
   always_ff @(posedge clk) begin
     if (rst_n && skid_valid_r && win_valid) begin
       $error("sobel_multicycle: skid buffer (profundidade 1) transbordou - ",
              "2 win_valid simultaneos com o buffer ja ocupado, janela seria perdida");
     end
   end
+  /* verilator lint_on SYNCASYNCNET */
   // synthesis translate_on
 
   // ---------------------------------------------------------------------

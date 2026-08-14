@@ -230,12 +230,16 @@ module mac_control_fsm #(
   // synthesis translate_off
   // Checagem de simulacao: violacao do contrato de interface (janela
   // nova apresentada enquanto a FSM ainda esta ocupada).
+  // ALTERADO AQUI (F-09/A-09): mesmo falso-positivo de SYNCASYNCNET que em
+  // window_3x3.sv - ver justificativa la.
+  /* verilator lint_off SYNCASYNCNET */
   always_ff @(posedge clk) begin
     if (rst_n && i_valid && !o_ready) begin
       $error("mac_control_fsm: violacao de contrato - i_valid ativo com o_ready=0 ",
              "(janela seria perdida, FSM ainda ocupada)");
     end
   end
+  /* verilator lint_on SYNCASYNCNET */
   // synthesis translate_on
 
 endmodule

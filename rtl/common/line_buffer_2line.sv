@@ -30,15 +30,19 @@ module line_buffer_2line #(
     input  logic [DATA_WIDTH-1:0] i_pixel,
     output logic                  o_valid,
     output logic [DATA_WIDTH-1:0] o_curr,
-    output logic [DATA_WIDTH-1:0] o_line1,
-    output logic [DATA_WIDTH-1:0] o_line2
+    output logic [DATA_WIDTH-1:0] o_line1,  // linha y-1
+    output logic [DATA_WIDTH-1:0] o_line2   // linha y-2
 );
 
   localparam int PtrWidth = $clog2(IMG_WIDTH);
   // +1: precisa contar ate IMG_WIDTH+1 (nao so IMG_WIDTH), ver comentario
   // no limiar de warm1/warm2 abaixo.
   localparam int WarmupWidth = $clog2(IMG_WIDTH + 2);
-  localparam logic [PtrWidth-1:0] LastPtr = (IMG_WIDTH - 1);
+  // ALTERADO AQUI (A-10): cast explicito - IMG_WIDTH-1 sempre cabe em
+  // PtrWidth bits por construcao (PtrWidth = $clog2(IMG_WIDTH)); o cast so
+  // declara isso ao Verilator, eliminando o warning WIDTHTRUNC sem mudar
+  // o valor calculado.
+  localparam logic [PtrWidth-1:0] LastPtr = PtrWidth'(IMG_WIDTH - 1);
   // Limiar de "aquecido": IMG_WIDTH+1, nao IMG_WIDTH. A leitura de mem1 e
   // registrada (read-antes-do-write no MESMO endereco do write deste
   // ciclo, resultado disponivel so no ciclo SEGUINTE) - isso da IMG_WIDTH
@@ -48,7 +52,10 @@ module line_buffer_2line #(
   // warm1 "verdadeiro" 1 ciclo cedo demais, vazando X (memoria nunca
   // escrita) para a saida logo na transicao - bug real, encontrado e
   // corrigido durante os testes deste modulo.
-  localparam logic [WarmupWidth-1:0] WarmThresh = (IMG_WIDTH + 1);
+  // ALTERADO AQUI (A-10): mesmo raciocinio de LastPtr acima - IMG_WIDTH+1
+  // sempre cabe em WarmupWidth bits por construcao (ver comentario de
+  // WarmupWidth = $clog2(IMG_WIDTH + 2), acima).
+  localparam logic [WarmupWidth-1:0] WarmThresh = WarmupWidth'(IMG_WIDTH + 1);
 
   // ---------------------------------------------------------------------
   // Estagio 1: atraso de 1 linha completa (IMG_WIDTH ciclos de i_valid)

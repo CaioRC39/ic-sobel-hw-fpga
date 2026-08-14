@@ -29,7 +29,12 @@ module abs_saturate #(
   // nunca chega nesse extremo - mas o modulo trata o caso certo de
   // qualquer forma, por ser pensado para reuso generico.
   logic signed [IN_WIDTH:0] value_ext;
-  assign value_ext = i_value;
+  // ALTERADO AQUI (A-10): cast explicito de largura, nao muda a extensao de
+  // sinal (i_value ja e signed, o cast so declara ao Verilator que o
+  // aumento de IN_WIDTH para IN_WIDTH+1 bits e intencional - a mesma folga
+  // de 1 bit ja documentada acima, contra o caso extremo de complemento de
+  // 2). Elimina o warning WIDTHEXPAND sem alterar nenhum bit simulado.
+  assign value_ext = (IN_WIDTH + 1)'(i_value);
 
   // Largura interna para o valor absoluto/limite: precisa caber tanto
   // a magnitude maxima (IN_WIDTH+1 bits) quanto o valor 2^OUT_WIDTH-1

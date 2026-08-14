@@ -57,13 +57,16 @@ module window_3x3 #(
     input  logic [  DATA_WIDTH-1:0] i_curr,
     input  logic [  DATA_WIDTH-1:0] i_line1,
     input  logic [  DATA_WIDTH-1:0] i_line2,
-    output logic                    o_ready,
+    output logic                    o_ready,  // trava ativa, ver ARQUITETURA_MULTICICLO.md secao 4.2
     output logic                    o_valid,
-    output logic [9*DATA_WIDTH-1:0] o_window
+    output logic [9*DATA_WIDTH-1:0] o_window  // vetor achatado, nao array 2D - ver nota de layout no RTL
 );
 
   localparam int ColWidth = $clog2(IMG_WIDTH);
-  localparam logic [ColWidth-1:0] LastCol = (IMG_WIDTH - 1);
+  // ALTERADO AQUI (A-10): cast explicito, mesmo raciocinio de
+  // line_buffer_2line.sv/LastPtr - elimina o warning WIDTHTRUNC sem mudar
+  // o valor calculado (ColWidth = $clog2(IMG_WIDTH) ja garante que cabe).
+  localparam logic [ColWidth-1:0] LastCol = ColWidth'(IMG_WIDTH - 1);
 
   logic [ColWidth-1:0] col_cnt_r;
   logic                phantom_pending_r;
@@ -169,12 +172,23 @@ module window_3x3 #(
   // Checagem de simulacao: violacao do contrato de gap entre linhas.
   // Se isso disparar, um pixel real foi descartado silenciosamente
   // porque o ciclo fantasma nao teve onde acontecer.
+  // ALTERADO AQUI (F-09/A-09): rst_n e lido aqui so como DADO (condicao do
+  // $error), nunca como reset de fato - este bloco nao tem nenhum
+  // flip-flop proprio de estado. O Verilator nao remove blocos
+  // "synthesis translate_off/on" antes de lintar (ao contrario de
+  // Vivado/Quartus na sintese real), entao compara esta leitura sincrona
+  // de rst_n com o uso assincrono no always_ff principal do modulo e
+  // aponta SYNCASYNCNET - falso-positivo confirmado por analise (ver
+  // docs/AUDITORIA_01_PRE_MULTICICLO.md, F-09/A-09): nenhum hardware real
+  // e afetado, ja que este bloco inteiro e removido na sintese.
+  /* verilator lint_off SYNCASYNCNET */
   always_ff @(posedge clk) begin
     if (rst_n && phantom_pending_r && i_valid) begin
       $error("window_3x3: violacao de contrato - i_valid ativo durante ciclo fantasma ",
              "(falta >=1 ciclo de gap entre linhas)");
     end
   end
+  /* verilator lint_on SYNCASYNCNET */
   // synthesis translate_on
 
 endmodule
