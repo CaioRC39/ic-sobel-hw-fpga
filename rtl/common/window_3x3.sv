@@ -47,6 +47,45 @@
 // imagem) - isso exige uma linha fantasma extra de zeros ao final do
 // frame, responsabilidade de um controlador de nivel superior (fora do
 // escopo deste modulo, que nao tem nocao de altura de imagem).
+//
+// ALTERADO AQUI (Alternativa 3-B, RESUMO_ESTADO_PROJETO.md, secao
+// "Design fechado - prevencao estrutural do bug de fronteira de
+// frame", motivada pelo Achado F-02 da Auditoria 01): o modulo recebe
+// agora 3 tags de proveniencia (i_curr_tag/i_line1_tag/i_line2_tag,
+// vindas de line_buffer_2line.sv em lockstep com i_curr/i_line1/
+// i_line2) e mantem 3 shift-registers de tag PROPRIOS, na MESMA
+// estrutura/temporizacao dos 3 shift-registers de pixel ja existentes
+// (tag_row0_r/tag_row1_r/tag_row2_r espelham sr_row0_r/sr_row1_r/
+// sr_row2_r posicao a posicao). Isso e deliberado, nao redundante: a
+// janela 3x3 e formada por ate 3 ciclos de historico POR LINHA, entao
+// comparar so a tag "de chegada" do ciclo atual NAO cobriria o caso em
+// que uma janela ainda contem, nas posicoes mais antigas do shift
+// register, pixels de um frame anterior que ainda nao foram
+// "empurrados para fora" pelo deslizamento horizontal - exatamente o
+// cenario de contaminacao de fronteira que esta alternativa existe
+// para cobrir.
+//
+// o_window_valid_geom (novo) e 1 quando as 9 tags da janela (3 linhas
+// x 3 colunas) sao TODAS iguais entre si - geometricamente pura, sem
+// nenhuma amostra remanescente de outro frame. Segue a MESMA convencao
+// de o_window: so tem significado quando o_valid=1 (nao e gated
+// internamente, mesmo padrao ja usado pelo proprio o_window).
+//
+// o_tag (novo) e a tag "nominal" da janela como um todo - passthrough
+// da tag da LINHA CENTRAL (i_line1_tag), a mesma linha em que a janela
+// esta CENTRADA por convencao (ver comentario de mapeamento no topo
+// deste cabecalho). Pensado para um futuro consumidor (ex: um
+// controlador de frame em sobel_multicycle.sv) que precise continuar
+// propagando a tag adiante sem reconstruir o raciocinio de qual das 3
+// linhas usar como referencia.
+//
+// O ciclo fantasma da borda direita (ver phantom_pending_r abaixo)
+// desliza um ZERO de pixel para dentro da janela - mas a tag que
+// acompanha esse zero fantasma continua sendo a tag REAL da ultima
+// coluna de cada linha (o shift register de tag simplesmente repete o
+// valor que ja estava na posicao mais recente, em vez de deslizar uma
+// tag nova) - o zero fantasma representa borda DENTRO do mesmo frame,
+// nunca deveria por si so derrubar o_window_valid_geom.
 module window_3x3 #(
     parameter int DATA_WIDTH = 8,
     parameter int IMG_WIDTH  = 8
@@ -57,9 +96,14 @@ module window_3x3 #(
     input  logic [  DATA_WIDTH-1:0] i_curr,
     input  logic [  DATA_WIDTH-1:0] i_line1,
     input  logic [  DATA_WIDTH-1:0] i_line2,
+    input  logic                    i_curr_tag,           // ALTERADO AQUI (3-B)
+    input  logic                    i_line1_tag,          // ALTERADO AQUI (3-B)
+    input  logic                    i_line2_tag,          // ALTERADO AQUI (3-B)
     output logic                    o_ready,  // trava ativa, ver ARQUITETURA_MULTICICLO.md secao 4.2
     output logic                    o_valid,
-    output logic [9*DATA_WIDTH-1:0] o_window  // vetor achatado, nao array 2D - ver nota de layout no RTL
+    output logic [9*DATA_WIDTH-1:0] o_window,             // vetor achatado, ver nota de layout
+    output logic                    o_tag,                // ALTERADO AQUI (3-B) - tag da linha 1
+    output logic                    o_window_valid_geom   // ALTERADO AQUI (3-B) - 1 = janela pura
 );
 
   localparam int ColWidth = $clog2(IMG_WIDTH);
@@ -84,6 +128,14 @@ module window_3x3 #(
   logic [DATA_WIDTH-1:0] sr_row1_r[3];  // linha central            (i_line1)
   logic [DATA_WIDTH-1:0] sr_row2_r[3];  // linha "abaixo do centro" (i_curr)
 
+  // ALTERADO AQUI (3-B): 3 shift-registers de tag, espelhando
+  // sr_row0_r/sr_row1_r/sr_row2_r posicao a posicao (mesma
+  // profundidade, mesmo timing de deslizamento) - ver justificativa no
+  // cabecalho do modulo.
+  logic tag_row0_r[3];
+  logic tag_row1_r[3];
+  logic tag_row2_r[3];
+
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       col_cnt_r <= '0;
@@ -93,6 +145,9 @@ module window_3x3 #(
         sr_row0_r[i] <= '0;
         sr_row1_r[i] <= '0;
         sr_row2_r[i] <= '0;
+        tag_row0_r[i] <= 1'b0;  // ALTERADO AQUI (3-B)
+        tag_row1_r[i] <= 1'b0;  // ALTERADO AQUI (3-B)
+        tag_row2_r[i] <= 1'b0;  // ALTERADO AQUI (3-B)
       end
     end else if (phantom_pending_r) begin
       // Ciclo fantasma: nao ha pixel novo (fim de linha) - desliza um
@@ -106,6 +161,19 @@ module window_3x3 #(
       sr_row2_r[2] <= sr_row2_r[1];
       sr_row2_r[1] <= sr_row2_r[0];
       sr_row2_r[0] <= '0;
+      // ALTERADO AQUI (3-B): o zero fantasma pertence ao MESMO frame
+      // da ultima coluna real - a tag deslizada para a posicao mais
+      // recente REPETE o valor que ja estava la (tag_rowX_r[0]), em
+      // vez de introduzir uma tag nova. Ver cabecalho do modulo.
+      tag_row0_r[2] <= tag_row0_r[1];
+      tag_row0_r[1] <= tag_row0_r[0];
+      tag_row0_r[0] <= tag_row0_r[0];
+      tag_row1_r[2] <= tag_row1_r[1];
+      tag_row1_r[1] <= tag_row1_r[0];
+      tag_row1_r[0] <= tag_row1_r[0];
+      tag_row2_r[2] <= tag_row2_r[1];
+      tag_row2_r[1] <= tag_row2_r[0];
+      tag_row2_r[0] <= tag_row2_r[0];
       phantom_pending_r <= 1'b0;
       valid_r <= 1'b1;
     end else if (i_valid) begin
@@ -122,6 +190,28 @@ module window_3x3 #(
         sr_row2_r[0] <= i_curr;
         sr_row2_r[1] <= '0;
         sr_row2_r[2] <= '0;
+        // ALTERADO AQUI (3-B) - BUG REAL corrigido apos rodar o teste
+        // test_window_valid_geom_detects_vertical_frame_boundary de
+        // verdade: as posicoes [1]/[2] (ainda sem vizinho esquerdo
+        // real) precisam herdar a tag ATUAL (mesmo raciocinio do
+        // ciclo fantasma da borda direita, e do zero-padding em
+        // line_buffer_2line.sv) - NAO um 1'b0 fixo. Um 1'b0 fixo aqui
+        // fazia toda janela nas 2 primeiras colunas de QUALQUER linha
+        // reportar falsamente o_window_valid_geom=0 sempre que a tag
+        // do frame corrente fosse 1 (a comparacao via tag_and/tag_or
+        // via de calcular incorretamente 2 "frames" diferentes onde
+        // so havia 1). Pixel usa '0 porque zero e um valor real de
+        // padding; tag NAO tem um "valor neutro" equivalente - precisa
+        // ser a tag verdadeira da amostra que esta entrando.
+        tag_row0_r[0] <= i_line2_tag;  // ALTERADO AQUI (3-B)
+        tag_row0_r[1] <= i_line2_tag;
+        tag_row0_r[2] <= i_line2_tag;
+        tag_row1_r[0] <= i_line1_tag;  // ALTERADO AQUI (3-B)
+        tag_row1_r[1] <= i_line1_tag;
+        tag_row1_r[2] <= i_line1_tag;
+        tag_row2_r[0] <= i_curr_tag;  // ALTERADO AQUI (3-B)
+        tag_row2_r[1] <= i_curr_tag;
+        tag_row2_r[2] <= i_curr_tag;
         valid_r <= 1'b0;  // ainda falta o vizinho da direita
       end else begin
         sr_row0_r[2] <= sr_row0_r[1];
@@ -133,6 +223,15 @@ module window_3x3 #(
         sr_row2_r[2] <= sr_row2_r[1];
         sr_row2_r[1] <= sr_row2_r[0];
         sr_row2_r[0] <= i_curr;
+        tag_row0_r[2] <= tag_row0_r[1];  // ALTERADO AQUI (3-B)
+        tag_row0_r[1] <= tag_row0_r[0];
+        tag_row0_r[0] <= i_line2_tag;
+        tag_row1_r[2] <= tag_row1_r[1];  // ALTERADO AQUI (3-B)
+        tag_row1_r[1] <= tag_row1_r[0];
+        tag_row1_r[0] <= i_line1_tag;
+        tag_row2_r[2] <= tag_row2_r[1];  // ALTERADO AQUI (3-B)
+        tag_row2_r[1] <= tag_row2_r[0];
+        tag_row2_r[0] <= i_curr_tag;
         valid_r <= 1'b1;
       end
       col_cnt_r <= is_last_col ? '0 : (col_cnt_r + 1'b1);
@@ -167,6 +266,27 @@ module window_3x3 #(
     sr_row2_r[1],
     sr_row2_r[0]
   };
+
+  // ALTERADO AQUI (3-B): tag nominal da janela = tag da linha central
+  // (i_line1_tag), a posicao mais recente do shift register do meio -
+  // mesma convencao de centralizacao ja documentada no cabecalho do
+  // modulo ("a janela emitida ... esta CENTRADA na linha de i_line1").
+  assign o_tag = tag_row1_r[0];
+
+  // ALTERADO AQUI (3-B): geometricamente pura <=> as 9 tags da janela
+  // sao TODAS iguais entre si. Truque de reducao para largura 1 bit:
+  // AND de todos os bits == OR de todos os bits so pode ser verdade se
+  // todos forem identicos (ou todos 0, ou todos 1) - equivalente a uma
+  // comparacao par-a-par exaustiva (36 pares), mas sem escrever os 36
+  // pares.
+  logic tag_and, tag_or;
+  assign tag_and = tag_row0_r[0] & tag_row0_r[1] & tag_row0_r[2] &
+                   tag_row1_r[0] & tag_row1_r[1] & tag_row1_r[2] &
+                   tag_row2_r[0] & tag_row2_r[1] & tag_row2_r[2];
+  assign tag_or  = tag_row0_r[0] | tag_row0_r[1] | tag_row0_r[2] |
+                   tag_row1_r[0] | tag_row1_r[1] | tag_row1_r[2] |
+                   tag_row2_r[0] | tag_row2_r[1] | tag_row2_r[2];
+  assign o_window_valid_geom = (tag_and == tag_or);
 
   // synthesis translate_off
   // Checagem de simulacao: violacao do contrato de gap entre linhas.
