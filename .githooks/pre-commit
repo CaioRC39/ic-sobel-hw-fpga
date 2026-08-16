@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo "Sincronizando seção Status do README..."
+
+python3 scripts/update_readme_status.py
+
+if [ $? -ne 0 ]; then
+    echo "Erro: falha ao atualizar a seção Status do README."
+    exit 1
+fi
+
+git add README.md
+
+echo "Seção Status do README atualizada."
