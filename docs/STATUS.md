@@ -2,7 +2,7 @@
 
 ## Resumo
 
-**Última atualização:** 15/08/2026
+**Última atualização:** 16/08/2026
 
 ### Etapa atual
 
