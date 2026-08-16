@@ -347,7 +347,7 @@ A ordem e o escopo de algumas etapas poderão ser ajustados de acordo com os res
 
 <!-- STATUS:START -->
 
-**Última atualização:** 15/08/2026
+**Última atualização:** 16/08/2026
 
 ### Etapa atual
 
