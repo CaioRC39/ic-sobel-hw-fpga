@@ -347,7 +347,28 @@ A ordem e o escopo de algumas etapas poderão ser ajustados de acordo com os res
 
 <!-- STATUS:START -->
 
-**Última atualização:** TESTE
+**Última atualização:** 15/08/2026
+
+### Etapa atual
+
+#### Implementação e validação da arquitetura multiciclo.
+
+A arquitetura multiciclo está próxima de sua primeira versão funcional completa. Os módulos comuns e os principais módulos específicos da arquitetura já foram implementados e testados. O foco atual é consolidar o top-level, concluir a validação de integração e fechar os testes relacionados à fronteira entre frames.
+
+### Próximo marco
+
+#### 🎯 Fechar a arquitetura multiciclo
+
+Para considerar a primeira arquitetura concluída:
+
+1. Consolidar o `sobel_multicycle.sv`;
+2. Executar o teste de integração ponta a ponta;
+3. Validar corretamente múltiplos frames consecutivos;
+4. Atualizar a documentação técnica e a auditoria correspondente.
+
+Após isso:
+
+> **Arquitetura multiciclo → baseline funcional para comparação com as arquiteturas pipeline e paralela.**
 
 <!-- STATUS:END -->
 
