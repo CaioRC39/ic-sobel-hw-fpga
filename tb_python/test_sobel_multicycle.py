@@ -1,17 +1,3 @@
-"""Testbench cocotb para o modulo rtl/multicycle/sobel_multicycle.sv.
-
-Modelo de referencia: convolucao Sobel L1 com zero-padding manual (1
-pixel de borda em todos os 4 lados) via numpy - mesma convencao de
-borda ja usada em window_3x3 (esquerda/direita/superior) e fechada
-neste modulo para a borda inferior (ver RESUMO_ESTADO_PROJETO.md,
-"Design fechado para sobel_multicycle.sv", item 4).
-
-IMG_WIDTH/IMG_HEIGHT pequenos de proposito (4x3): a arquitetura
-multiciclo gasta ~15 ciclos uteis por pixel (ver
-docs/ARQUITETURA_MULTICICLO.md, secao 5.2) - uma imagem 640x480 real
-seria inviavel de simular aqui.
-"""
-
 import os
 
 import numpy as np
@@ -32,11 +18,6 @@ GY_KERNEL = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
 
 
 def _reference_sobel_l1(image: np.ndarray):
-    """Zero-padding de 1 pixel nos 4 lados (padrao ja usado pelos
-    modulos comuns + a extensao de borda inferior fechada neste
-    modulo), convolucao valida 3x3 em cada pixel real, magnitude L1
-    saturada em 255. Retorna a lista de pixels esperados em ordem
-    raster-scan (mesma ordem em que o DUT deve produzir o_pixel)."""
     padded = np.pad(image, 1, mode="constant", constant_values=0).astype(int)
     h, w = image.shape
     out = []
@@ -60,12 +41,6 @@ async def _reset(dut):
 
 
 async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.0, seed: int = 0):
-    """Alimenta a imagem inteira respeitando o_ready (nunca calcula
-    backpressure manualmente - mesmo espirito de
-    test_ready_gating_prevents_manual_gap_calculation em
-    test_window_3x3.py), opcionalmente inserindo bolhas aleatorias
-    (i_valid=0 mesmo com o_ready=1) para exercitar tolerancia a
-    stalls externos. Retorna a lista de pixels de saida coletados."""
     import random
 
     rnd = random.Random(seed)
@@ -74,7 +49,7 @@ async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.
     idx = 0
     collected = []
 
-    max_cycles = 50 * len(flat) + 2000  # margem generosa (15 ciclos/pixel + drenagem)
+    max_cycles = 50 * len(flat) + 2000
     cycles = 0
     while True:
         await ReadOnly()
@@ -115,8 +90,6 @@ async def test_reset_state(dut):
 
 @cocotb.test()
 async def test_small_image_golden(dut):
-    """Imagem pequena, sem stalls externos - compara pixel a pixel
-    contra a referencia numpy (zero-padding nos 4 lados)."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
@@ -135,9 +108,6 @@ async def test_small_image_golden(dut):
 
 @cocotb.test()
 async def test_small_image_with_external_stalls(dut):
-    """Mesma imagem, mas com bolhas aleatorias de i_valid=0 mesmo com
-    o_ready=1 (fonte externa intermitente) - o resultado deve ser
-    IDENTICO ao caso sem stall, apenas levando mais ciclos."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
@@ -153,11 +123,6 @@ async def test_small_image_with_external_stalls(dut):
 
 @cocotb.test()
 async def test_two_consecutive_frames(dut):
-    """2 frames seguidos, back-to-back (sem gap manual entre eles -
-    so respeita o_ready, que deve voltar sozinho a 1 apos o frame
-    anterior drenar, Ponto 5 do design fechado). Confirma que o
-    contador feed_cnt_r realmente faz wrap e realinha corretamente
-    para o 2o frame."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 

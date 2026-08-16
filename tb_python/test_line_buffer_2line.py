@@ -1,18 +1,3 @@
-"""Testbench cocotb para rtl/common/line_buffer_2line.sv, incluindo a
-Alternativa 3-B (tag de proveniencia i_tag -> o_curr_tag/o_line1_tag/
-o_line2_tag).
-
-Regressao: os testes de geometria/atraso do pixel (ja existentes antes
-da 3-B) sao repetidos aqui com i_tag=0 fixo, confirmando que a adicao
-da tag nao alterou nenhum comportamento existente do pixel (mudanca
-estritamente aditiva).
-
-Testes novos (3-B): confirmam que a tag sofre EXATAMENTE o mesmo atraso
-que o pixel correspondente (lockstep), inclusive atravessando uma
-fronteira de frame simulada (tag alternando de valor no meio do
-stream) - e a razao de existir da Alternativa 3-B.
-"""
-
 import os
 import random
 
@@ -30,17 +15,19 @@ async def _reset(dut):
     dut.i_valid.value = 0
     dut.i_pixel.value = 0
     dut.i_tag.value = 0
+    dut.i_rearm.value = 0
     for _ in range(3):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
 
 
-async def _step(dut, valid: int, pixel: int, tag: int = 0, rst_n: int = 1):
+async def _step(dut, valid: int, pixel: int, tag: int = 0, rst_n: int = 1, rearm: int = 0):
     dut.rst_n.value = rst_n
     dut.i_valid.value = valid
     dut.i_pixel.value = pixel
     dut.i_tag.value = tag
+    dut.i_rearm.value = rearm
     await RisingEdge(dut.clk)
     await ReadOnly()
     out = {
@@ -72,8 +59,6 @@ async def test_reset_state(dut):
 
 @cocotb.test()
 async def test_delay_and_zero_padding(dut):
-    """Regressao (i_tag=0 fixo): geometria/atraso do pixel identicos
-    ao comportamento pre-3B."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
@@ -106,7 +91,7 @@ async def test_ignores_invalid_cycles(dut):
     real_t = 0
     for _ in range(n_real_pixels):
         for _ in range(random.randint(0, 2)):
-            out = await _step(dut, valid=0, pixel=0xFF, tag=1)  # tag=1 "lixo", nao deveria contaminar
+            out = await _step(dut, valid=0, pixel=0xFF, tag=1)
             assert out["valid"] == 0
 
         pix = (real_t * 13 + 5) % 256
@@ -151,22 +136,8 @@ async def test_midstream_reset(dut):
         assert out["line2"] == exp_line2
 
 
-# -----------------------------------------------------------------------
-# Testes novos - Alternativa 3-B (tag de proveniencia)
-# -----------------------------------------------------------------------
-
 @cocotb.test()
 async def test_tag_constant_within_frame_always_matches(dut):
-    """Uso REALISTA da tag (contrato explicito no cabecalho do modulo:
-    o integrador alterna i_tag APENAS a cada inicio de frame, nunca no
-    meio de um frame): com i_tag constante do inicio ao fim do teste,
-    o_curr_tag/o_line1_tag/o_line2_tag devem refletir esse valor em
-    TODO ciclo com o_valid=1, inclusive durante os 2*IMG_WIDTH ciclos
-    iniciais de zero-padding (onde o pixel ainda nao e dado real, mas
-    a tag - constante - ja e trivialmente correta em qualquer leitura,
-    seja do "ramo nao-aquecido" (i_tag da vez) ou do "ramo aquecido"
-    (tag empacotada, escrita numa passada anterior AINDA dentro do
-    mesmo frame)."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
@@ -180,13 +151,6 @@ async def test_tag_constant_within_frame_always_matches(dut):
 
 @cocotb.test()
 async def test_tag_lockstep_across_3_frame_boundaries(dut):
-    """Extensao de test_tag_survives_frame_boundary_in_memory para 3
-    fronteiras de frame consecutivas (tag alternando 0/1/0), provando
-    que o mecanismo de empacotamento (mem1/mem2) nao acumula nenhum
-    residuo entre trocas repetidas de frame - so a Regra de Processo/
-    Alternativa 6 do RESUMO_ESTADO_PROJETO.md (3+ frames consecutivos)
-    aplicada aqui no nivel deste modulo, antes de existir um
-    sobel_multicycle.sv completo para testar em nivel de sistema."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
@@ -212,13 +176,6 @@ async def test_tag_lockstep_across_3_frame_boundaries(dut):
 
 @cocotb.test()
 async def test_tag_survives_frame_boundary_in_memory(dut):
-    """Cenario central da Alternativa 3-B: 2 frames consecutivos, tag=0
-    no 1o e tag=1 no 2o. o_line1_tag/o_line2_tag devem continuar
-    refletindo a tag do frame de ORIGEM de cada amostra armazenada -
-    inclusive logo apos a transicao, quando a memoria ainda contem
-    dado do frame anterior (tag=0) mas o stream de entrada ja esta no
-    frame novo (tag=1). E exatamente essa discrepancia que
-    window_3x3.o_window_valid_geom precisa enxergar a jusante."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
@@ -244,12 +201,44 @@ async def test_tag_survives_frame_boundary_in_memory(dut):
         exp_line2_tag = hist_tag[gt - 2 * IMG_WIDTH]
 
         assert out["curr_tag"] == 1
-        assert out["line1_tag"] == exp_line1_tag, (
-            f"t(global)={gt}: line1_tag deveria refletir o frame de ORIGEM "
-            f"da amostra armazenada ha IMG_WIDTH ciclos (esperado={exp_line1_tag}), "
-            f"obtido={out['line1_tag']}"
-        )
+        assert out["line1_tag"] == exp_line1_tag, f"t(global)={gt}"
         assert out["line2_tag"] == exp_line2_tag, f"t(global)={gt}"
+
+
+@cocotb.test()
+async def test_rearm_prevents_residual_tag_leak(dut):
+    """Contraste direto com test_tag_survives_frame_boundary_in_memory
+    (que demonstra o vazamento SEM i_rearm): aqui, i_rearm e pulsado no
+    1o ciclo de cada frame (mesmo padrao que sobel_multicycle.sv vai
+    usar) - o_line1_tag/o_line2_tag NUNCA devem mostrar a tag do frame
+    ANTERIOR apos a fronteira; durante os IMG_WIDTH+1/IMG_WIDTH
+    primeiros ciclos do novo frame, devem refletir a tag ATUAL (zero-
+    padding herdando i_tag, mesmo raciocinio da borda superior do
+    frame 1) - nunca o residuo real do frame antigo ainda fisicamente
+    presente na memoria circular."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await _reset(dut)
+
+    frame1_len = 3 * IMG_WIDTH
+    frame2_len = 3 * IMG_WIDTH
+
+    for t in range(frame1_len):
+        pix = (t * 3 + 1) % 256
+        await _step(dut, valid=1, pixel=pix, tag=0, rearm=(t == 0))
+
+    for t in range(frame2_len):
+        pix = (t * 5 + 2) % 256
+        out = await _step(dut, valid=1, pixel=pix, tag=1, rearm=(t == 0))
+
+        assert out["curr_tag"] == 1, f"t(frame2)={t}"
+        assert out["line1_tag"] == 1, (
+            f"t(frame2)={t}: com i_rearm, line1_tag NUNCA deveria mostrar "
+            f"a tag do frame anterior (0) - obtido={out['line1_tag']}"
+        )
+        assert out["line2_tag"] == 1, (
+            f"t(frame2)={t}: com i_rearm, line2_tag NUNCA deveria mostrar "
+            f"a tag do frame anterior (0) - obtido={out['line2_tag']}"
+        )
 
 
 def test_line_buffer_2line_runner():

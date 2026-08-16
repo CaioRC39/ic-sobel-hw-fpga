@@ -51,6 +51,7 @@ module line_buffer_2line #(
     input  logic                  i_valid,
     input  logic [DATA_WIDTH-1:0] i_pixel,
     input  logic                  i_tag,        // ALTERADO AQUI (3-B) - tag de proveniencia
+    input  logic                  i_rearm,      // ALTERADO AQUI (3-C) - pulso: re-arma aquecimento
     output logic                  o_valid,
     output logic [DATA_WIDTH-1:0] o_curr,
     output logic [DATA_WIDTH-1:0] o_line1,      // linha y-1
@@ -112,7 +113,13 @@ module line_buffer_2line #(
       rd_data1_r <= mem1[wr_ptr1_r];
       mem1[wr_ptr1_r] <= {i_tag, i_pixel};  // ALTERADO AQUI (3-B) - tag empacotada com o pixel
       wr_ptr1_r <= (wr_ptr1_r == LastPtr) ? '0 : (wr_ptr1_r + 1'b1);
-      if (!warm1) warmup1_cnt_r <= warmup1_cnt_r + 1'b1;
+      // ALTERADO AQUI (3-C): i_rearm tem prioridade sobre o
+      // incremento normal - forca warmup1_cnt_r de volta a 0 no
+      // primeiro ciclo de cada novo frame, fazendo warm1 voltar a
+      // falso e o zero-padding de borda superior se repetir a cada
+      // fronteira de frame, nao so no power-up.
+      if (i_rearm) warmup1_cnt_r <= '0;
+      else if (!warm1) warmup1_cnt_r <= warmup1_cnt_r + 1'b1;
     end
   end
 
@@ -162,7 +169,9 @@ module line_buffer_2line #(
     end else if (i_valid) begin
       mem2[wr_ptr2_r] <= {tag1_val, line1_val};  // ALTERADO AQUI (3-B) - mesmo padrao do estagio 1
       wr_ptr2_r <= (wr_ptr2_r == LastPtr) ? '0 : (wr_ptr2_r + 1'b1);
-      if (!warm2) warmup2_cnt_r <= warmup2_cnt_r + 1'b1;
+      // ALTERADO AQUI (3-C): mesmo raciocinio do estagio 1.
+      if (i_rearm) warmup2_cnt_r <= '0;
+      else if (!warm2) warmup2_cnt_r <= warmup2_cnt_r + 1'b1;
     end
   end
 
