@@ -138,6 +138,47 @@ async def test_two_consecutive_frames(dut):
     assert collected1 == expected1, "frame 1 divergiu da referencia"
     assert collected2 == expected2, "frame 2 (apos wrap do feed_cnt_r) divergiu da referencia"
 
+# -----------------------------------------------------------------------
+# Alternativa 6 (RESUMO_ESTADO_PROJETO.md, "Design fechado - prevencao
+# estrutural do bug de fronteira de frame"): nenhuma arquitetura pode
+# ser declarada concluida sem um teste de 3+ frames consecutivos.
+# -----------------------------------------------------------------------
+
+@cocotb.test()
+async def test_four_consecutive_frames(dut):
+    """4 frames (nao so 3): frame_tag_r e 1 UNICO bit, que alterna a
+    cada fim de frame (0->1->0->1->...) - com 4 frames fechamos 2
+    ciclos completos de wrap, cobrindo o caso em que a tag do frame 3
+    repete a do frame 1 (aliasing de 1 bit). A independencia entre
+    "stall externo" e "fronteira de frame" foi confirmada por leitura
+    direta do RTL (feed_cnt_r/frame_tag_r/frame_start_pulse so avancam
+    em consume_sample, nunca em funcao de ciclos de clock ociosos) -
+    por isso este teste roda com stall_prob=0.0 em todos os frames, de
+    proposito, isolando exclusivamente a variavel de fronteira de
+    frame + wrap de tag (decisao registrada em sessao de chat, nao
+    reaberta aqui sem motivo tecnico novo). Cada frame usa uma imagem
+    com padrao numerico distinto (par arange/multiplicador/offset) para
+    nao mascarar um bug de fronteira atras de uma coincidencia de
+    valores entre frames.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await _reset(dut)
+
+    images = [
+        (np.arange(1, IMG_HEIGHT * IMG_WIDTH + 1) * 17 % 256).reshape(IMG_HEIGHT, IMG_WIDTH),
+        (np.arange(50, 50 + IMG_HEIGHT * IMG_WIDTH) * 23 % 256).reshape(IMG_HEIGHT, IMG_WIDTH),
+        (np.arange(7, 7 + IMG_HEIGHT * IMG_WIDTH) * 31 % 256).reshape(IMG_HEIGHT, IMG_WIDTH),
+        (np.arange(100, 100 + IMG_HEIGHT * IMG_WIDTH) * 41 % 256).reshape(IMG_HEIGHT, IMG_WIDTH),
+    ]
+
+    for frame_idx, image in enumerate(images):
+        collected = await _feed_image_and_collect(dut, image, stall_prob=0.0, seed=frame_idx)
+        expected = _reference_sobel_l1(image)
+        assert collected == expected, (
+            f"frame {frame_idx + 1}/4 divergiu da referencia (tag nominal esperada "
+            f"{frame_idx % 2} - frames 1 e 3 compartilham a mesma tag de 1 bit)"
+        )
+
 
 def test_sobel_multicycle_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
