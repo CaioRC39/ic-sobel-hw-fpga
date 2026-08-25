@@ -99,7 +99,14 @@ module line_buffer_2line #(
   logic [WarmupWidth-1:0] warmup1_cnt_r;
   logic                   warm1;
 
-  assign warm1 = (warmup1_cnt_r >= WarmThresh);
+  // ALTERADO AQUI (B1, complemento da Alternativa A): warm1 e combinacional
+  // sobre warmup1_cnt_r, que so reflete o rearm 1 ciclo DEPOIS de i_rearm=1
+  // (reset sincrono). Sem este AND, no proprio ciclo do rearm warm1 ainda
+  // mostra o valor SATURADO do fim do frame anterior, lendo mem1 com dado
+  // residual antes da 1a escrita do novo frame - a causa da falha em
+  // test_rearm_prevents_residual_tag_leak. Hipotese pendente de confirmacao
+  // por execucao real (ver RESUMO_ESTADO_PROJETO.md).
+  assign warm1 = (warmup1_cnt_r >= WarmThresh) && !i_rearm;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -118,7 +125,14 @@ module line_buffer_2line #(
       // primeiro ciclo de cada novo frame, fazendo warm1 voltar a
       // falso e o zero-padding de borda superior se repetir a cada
       // fronteira de frame, nao so no power-up.
-      if (i_rearm) warmup1_cnt_r <= '0;
+      // ALTERADO AQUI (Alternativa A): o ramo de i_rearm ja esta aninhado
+      // dentro de else if (i_valid) - ou seja, i_rearm so tem efeito quando
+      // este ciclo JA e um pulso real. Contar esse pulso (<= 1, nao <= 0)
+      // evita o descarte silencioso que atrasava warmup1_cnt_r em 1 pulso
+      // em toda fronteira de frame (ver RESUMO_ESTADO_PROJETO.md, secao
+      // "Pendente / em andamento agora", causa raiz confirmada por 2
+      // evidencias independentes).
+      if (i_rearm) warmup1_cnt_r <= 1'b1;
       else if (!warm1) warmup1_cnt_r <= warmup1_cnt_r + 1'b1;
     end
   end
@@ -160,7 +174,8 @@ module line_buffer_2line #(
 
   // Limiar SIMPLES (IMG_WIDTH, sem +1) - ver comentario acima sobre por
   // que o estagio 2 nao precisa da mesma compensacao do estagio 1.
-  assign warm2 = (warmup2_cnt_r >= IMG_WIDTH[WarmupWidth-1:0]);
+  // ALTERADO AQUI (B1): mesmo raciocinio do estagio 1 acima.
+  assign warm2 = (warmup2_cnt_r >= IMG_WIDTH[WarmupWidth-1:0]) && !i_rearm;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -170,7 +185,9 @@ module line_buffer_2line #(
       mem2[wr_ptr2_r] <= {tag1_val, line1_val};  // ALTERADO AQUI (3-B) - mesmo padrao do estagio 1
       wr_ptr2_r <= (wr_ptr2_r == LastPtr) ? '0 : (wr_ptr2_r + 1'b1);
       // ALTERADO AQUI (3-C): mesmo raciocinio do estagio 1.
-      if (i_rearm) warmup2_cnt_r <= '0;
+      // ALTERADO AQUI (Alternativa A): mesmo raciocinio do estagio 1 acima -
+      // simetria do bug, mesma correcao.
+      if (i_rearm) warmup2_cnt_r <= 1'b1;
       else if (!warm2) warmup2_cnt_r <= warmup2_cnt_r + 1'b1;
     end
   end

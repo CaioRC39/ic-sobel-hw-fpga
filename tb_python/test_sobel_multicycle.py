@@ -40,7 +40,13 @@ async def _reset(dut):
     await RisingEdge(dut.clk)
 
 
-async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.0, seed: int = 0):
+async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.0, seed: int = 0,
+                                    on_cycle=None):
+    # ALTERADO AQUI: callback opcional, chamado 1x por iteracao do loop
+    # JA VALIDADO deste helper (mesmo ponto de amostragem, apos ReadOnly,
+    # antes de NextTimeStep) - permite instrumentacao SEM duplicar o
+    # protocolo ready/valid numa 2a copia do laço (fonte de bug nas
+    # ultimas rodadas de investigacao, ver historico desta sessao).
     import random
 
     rnd = random.Random(seed)
@@ -56,6 +62,8 @@ async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.
         ready = int(dut.o_ready.value)
         out_valid = int(dut.o_valid.value)
         pixel = int(dut.o_pixel.value) if out_valid else None
+        if on_cycle is not None:
+            on_cycle(cycles, int(dut.i_valid.value), int(dut.i_pixel.value))
         await NextTimeStep()
 
         present_now = ready and idx < len(flat) and rnd.random() >= stall_prob
@@ -174,6 +182,18 @@ async def test_four_consecutive_frames(dut):
     for frame_idx, image in enumerate(images):
         collected = await _feed_image_and_collect(dut, image, stall_prob=0.0, seed=frame_idx)
         expected = _reference_sobel_l1(image)
+        if collected != expected:
+            # ALTERADO AQUI: instrumentacao minima - localiza o(s) indice(s)
+            # exato(s) de divergencia, que o assert padrao esconde (listas
+            # truncadas com "..." na saida do cocotb/pytest).
+            mismatches = [
+                (i, g, e) for i, (g, e) in enumerate(zip(collected, expected)) if g != e
+            ]
+            print(f"\n=== FRAME {frame_idx + 1}/4: len(collected)={len(collected)} "
+                  f"len(expected)={len(expected)} mismatches={len(mismatches)} ===")
+            for i, g, e in mismatches:
+                r, c = divmod(i, IMG_WIDTH)
+                print(f"  idx={i} (linha={r}, col={c}): obtido={g} esperado={e}")
         assert collected == expected, (
             f"frame {frame_idx + 1}/4 divergiu da referencia (tag nominal esperada "
             f"{frame_idx % 2} - frames 1 e 3 compartilham a mesma tag de 1 bit)"
