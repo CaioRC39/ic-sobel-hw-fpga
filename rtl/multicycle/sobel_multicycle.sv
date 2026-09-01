@@ -90,36 +90,30 @@ module sobel_multicycle #(
   );
 
   logic                    fsm_ready;
-  logic                    skid_valid_r;
-  logic [9*DATA_WIDTH-1:0] skid_window_r;
   logic                    fsm_i_valid;
   logic [9*DATA_WIDTH-1:0] fsm_i_window;
 
-  assign fsm_i_valid  = fsm_ready && (skid_valid_r || win_valid_real);
-  assign fsm_i_window = skid_valid_r ? skid_window_r : win_window;
-
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      skid_valid_r  <= 1'b0;
-      skid_window_r <= '0;
-    end else if (skid_valid_r) begin
-      if (fsm_ready) skid_valid_r <= 1'b0;
-    end else if (win_valid_real && !fsm_ready) begin
-      skid_valid_r  <= 1'b1;
-      skid_window_r <= win_window;
-    end
-  end
-
-  /* verilator lint_off SYNCASYNCNET */
-  // synthesis translate_off
-  always_ff @(posedge clk) begin
-    if (rst_n && skid_valid_r && win_valid) begin
-      $error("sobel_multicycle: skid buffer (profundidade 1) transbordou - ",
-             "2 win_valid simultaneos com o buffer ja ocupado, janela seria perdida");
-    end
-  end
-  // synthesis translate_on
-  /* verilator lint_on SYNCASYNCNET */
+  // ALTERADO AQUI: skid buffer de profundidade 1 (bypass combinacional +
+  // 1 slot) substituido por skid_fifo2 (FIFO sincrona PURA, profundidade
+  // 2 - "Opcao B", RESUMO_ESTADO_PROJETO.md secao "Achado adicional...
+  // skid buffer" + docs/ARQUITETURA_MULTICICLO.md). Extraido para modulo
+  // proprio (CLAUDE.md secao 4/15.4 - contrato temporal violavel precisa
+  // de $error + teste dedicado, mais facil de garantir isolando o
+  // modulo). o_overflow deixado sem conexao de proposito (mesmo padrao
+  // ja usado para kernel_rom.o_addr_valid em mac_control_fsm.sv - saida
+  // nao conectada nao e erro; o $error interno do skid_fifo2 ja cobre o
+  // alarme de simulacao independente de conexao externa).
+  skid_fifo2 #(
+      .DATA_WIDTH(9 * DATA_WIDTH)
+  ) u_skid (
+      .clk               (clk),
+      .rst_n             (rst_n),
+      .i_push            (win_valid_real),
+      .i_push_data       (win_window),
+      .i_downstream_ready(fsm_ready),
+      .o_valid           (fsm_i_valid),
+      .o_data            (fsm_i_window)
+  );
 
   mac_control_fsm #(
       .DATA_WIDTH (DATA_WIDTH),
