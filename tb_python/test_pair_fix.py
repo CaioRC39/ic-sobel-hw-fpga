@@ -115,7 +115,8 @@ async def test_pair_real_pattern(dut):
 
 
 def test_pair_fix_runner():
-    sim_build = "/home/claude/repro_fix/sim/sim_build_pair_fix"
+    proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sim_build = os.path.join(proj_root, "sim", "sim_build_magnitude_l1")
     wrapper_path = os.path.join(sim_build, "lb_window_pair.sv")
     os.makedirs(sim_build, exist_ok=True)
     with open(wrapper_path, "w") as f:
@@ -123,11 +124,10 @@ def test_pair_fix_runner():
     run_isolated(
         "test_pair_real_pattern",
         verilog_sources=[
-            "/home/claude/repro_fix/rtl/common/line_buffer_2line.sv",
-            "/home/claude/repro_fix/rtl/common/window_3x3.sv",
+            os.path.join(proj_root, "rtl", "common", "magnitude_l1.sv"),
             wrapper_path,
         ],
-        includes=["/home/claude/repro/include"],
+        includes=[os.path.join(proj_root, "include")],
         toplevel="lb_window_pair",
         module="test_pair_fix",
         parameters={"DATA_WIDTH": DATA_WIDTH, "IMG_WIDTH": IMG_WIDTH},

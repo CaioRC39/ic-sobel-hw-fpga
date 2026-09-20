@@ -214,6 +214,7 @@ def test_sobel_multicycle_runner():
             os.path.join(proj_root, "rtl", "multicycle", "kernel_rom.sv"),
             os.path.join(proj_root, "rtl", "multicycle", "mac_control_fsm.sv"),
             os.path.join(proj_root, "rtl", "multicycle", "skid_fifo2.sv"),
+            os.path.join(proj_root, "rtl", "common", "line_window_skid.sv"),
             os.path.join(proj_root, "rtl", "multicycle", "sobel_multicycle.sv"),
         ],
         includes=[os.path.join(proj_root, "include")],
