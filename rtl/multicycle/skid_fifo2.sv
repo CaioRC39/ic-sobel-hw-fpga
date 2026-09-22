@@ -66,7 +66,8 @@ module skid_fifo2 #(
     input  logic                  i_downstream_ready, // equivalente a fsm_ready
     output logic                  o_valid,            // equivalente a fsm_i_valid
     output logic [DATA_WIDTH-1:0] o_data,             // equivalente a fsm_i_window
-    output logic                  o_overflow          // 1 = i_push descartado (cheio, sem pop)
+    output logic                  o_overflow,         // 1 = i_push descartado (cheio, sem pop)
+    output logic                  o_room              // 1 = buffer completamente vazio (Alternativa A3)
 );
 
   localparam int SkidDepth = 2;
@@ -81,6 +82,20 @@ module skid_fifo2 #(
   logic skid_push_accepted;
 
   assign skid_full = (skid_count_r == 2'd2);
+
+  // ALTERADO AQUI (Alternativa A3, correcao 2 - confirmada por trace real,
+  // tb_python/test_a3_stale_room_race_trace.py, ciclo 89): a 1a versao de
+  // o_room usava so skid_count_r (registrador), que so reflete um push ou
+  // pop 1 ciclo DEPOIS dele acontecer - permitindo, no MESMO ciclo de um
+  // push/pop ainda nao assentado, uma leitura desatualizada que deixou
+  // passar um 3o aceite indevido em window_3x3 (2 aceites seguidos sem
+  // gap, o 2o baseado em room stale). Corrigido com a MESMA formula
+  // "olhando a frente" ja usada e validada em line_window_skid.sv (o_room,
+  // "formula v2") - soma i_push e subtrai skid_pop deste MESMO ciclo antes
+  // de decidir se o buffer ficara REALMENTE vazio apos este ciclo resolver.
+  logic [2:0] room_calc;
+  assign room_calc = {1'b0, skid_count_r} + {2'b0, i_push} - {2'b0, skid_pop};
+  assign o_room = (room_calc == 3'd0);
 
   // o_valid so pode ser 1 quando i_downstream_ready=1: mac_control_fsm.sv
   // tem seu PROPRIO contrato de interface (dispara $error se i_valid=1

@@ -112,7 +112,14 @@ module sobel_multicycle #(
       .i_line1_tag       (lb_line1_tag),
       .i_line2_tag       (lb_line2_tag),
       .o_room            (lw_skid_room),
-      .i_downstream_ready(win_ready),
+      // ALTERADO AQUI (Alternativa A3): so libera esta entrega (pop)
+      // quando window_3x3 esta pronto E u_skid esta completamente vazio
+      // - uma unica entrega pode gerar ate 2 pushes em u_skid (saida
+      // normal + ciclo fantasma de window_3x3), entao "quase vazio"
+      // nao basta. Mantido em LOCKSTEP com o gating de i_valid de
+      // u_window abaixo (mesma expressao) - ver justificativa completa
+      // no cabecalho de skid_fifo2.sv.
+      .i_downstream_ready(win_ready && skid_room),
       .o_valid           (lw_skid_valid),
       .o_curr            (lw_skid_curr),
       .o_line1           (lw_skid_line1),
@@ -142,7 +149,14 @@ module sobel_multicycle #(
       .rst_n             (rst_n),
       // ALTERADO AQUI: entradas vem do novo skid (lw_skid_*), nao mais
       // diretamente de line_buffer_2line (lb_*).
-      .i_valid           (lw_skid_valid),
+      // ALTERADO AQUI (Alternativa A3): gateado tambem por skid_room -
+      // sem isso, lw_skid_valid ficaria "preso" em 1 aguardando o pop
+      // (agora condicionado por skid_room acima) e window_3x3 aceitaria
+      // a MESMA janela mais de uma vez (o modulo nao tem nocao de "dado
+      // repetido" - so amostra i_valid=1 sempre que ve). Mesma
+      // expressao win_ready&&skid_room do pop de u_lw_skid acima,
+      // mantendo consumo e pop sempre em lockstep.
+      .i_valid           (lw_skid_valid && win_ready && skid_room),
       .i_curr            (lw_skid_curr),
       .i_line1           (lw_skid_line1),
       .i_line2           (lw_skid_line2),
@@ -159,11 +173,13 @@ module sobel_multicycle #(
   logic                    fsm_ready;
   logic                    fsm_i_valid;
   logic [9*DATA_WIDTH-1:0] fsm_i_window;
+  logic                    skid_room;  // ALTERADO AQUI (Alternativa A3) - u_skid completamente vazio
 
-  // skid_fifo2 (janela -> FSM) - INALTERADO por esta correcao, ver
-  // RESUMO_ESTADO_PROJETO.md secao "Trade-off de fundir skid_fifo2.sv
-  // ... com o novo skid" para o porque de nao reaproveitar/fundir com
-  // line_window_skid.
+  // skid_fifo2 (janela -> FSM). Ganhou a saida o_room nesta correcao
+  // (Alternativa A3) - ver RESUMO_ESTADO_PROJETO.md, achado "overflow de
+  // skid_fifo2 apos integrar line_window_skid". Continua um modulo
+  // deliberadamente SEPARADO de line_window_skid (razao inalterada, ver
+  // secao "Trade-off de fundir skid_fifo2.sv... com o novo skid").
   skid_fifo2 #(
       .DATA_WIDTH(9 * DATA_WIDTH)
   ) u_skid (
@@ -173,7 +189,8 @@ module sobel_multicycle #(
       .i_push_data       (win_window),
       .i_downstream_ready(fsm_ready),
       .o_valid           (fsm_i_valid),
-      .o_data            (fsm_i_window)
+      .o_data            (fsm_i_window),
+      .o_room            (skid_room)
   );
 
   mac_control_fsm #(
