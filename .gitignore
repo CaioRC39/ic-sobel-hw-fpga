@@ -3,3 +3,4 @@ sim/
 *.fst
 *.out
 __pycache__/
+docs/LaTeX/

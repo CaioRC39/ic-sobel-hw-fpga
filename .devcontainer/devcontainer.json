@@ -1,24 +1,16 @@
 {
     "name": "SystemVerilog",
-    "image": "ubuntu:24.04",
-    "runArgs": [
-        "--name",
-        "sv-dev"
-    ],
-    "remoteEnv": {
-        "LANG": "C.UTF-8"
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
     },
-    "features": {
-        "ghcr.io/devcontainers/features/node:1": {
-            "version": "22"
-        }
-    },
-    "postCreateCommand": "bash .devcontainer/post-create.sh",
+    "remoteUser": "vscode",
     "customizations": {
         "vscode": {
             "extensions": [
                 "mshr-h.veriloghdl",
-                "bmpenuelas.systemverilog-formatter-vscode"
+                "bmpenuelas.systemverilog-formatter-vscode",
+                "james-yu.latex-workshop"
             ]
         }
     },

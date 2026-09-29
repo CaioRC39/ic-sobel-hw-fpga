@@ -1,4 +1,4 @@
-cocotb
-cocotb-test
+cocotb>=1.9
+cocotb-test>=0.2.5
+pytest>=8.0
 numpy
-pytest
