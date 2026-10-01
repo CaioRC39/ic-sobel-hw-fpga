@@ -71,6 +71,7 @@ def test_single_frame_low_contrast_runner():
         "test_single_frame_low_contrast",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "line_buffer_2line.sv"),
+            os.path.join(proj_root, "rtl", "common", "line_window_skid.sv"),
             os.path.join(proj_root, "rtl", "common", "window_3x3.sv"),
             os.path.join(proj_root, "rtl", "common", "abs_saturate.sv"),
             os.path.join(proj_root, "rtl", "common", "magnitude_l1.sv"),

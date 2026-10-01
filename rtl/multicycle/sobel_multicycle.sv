@@ -207,24 +207,25 @@ module sobel_multicycle #(
       .o_pixel (o_pixel)
   );
 
-  localparam int DiscardCntWidth = $clog2(IMG_WIDTH + 1);
+  // ALTERADO AQUI (F-17, Opcao 2): contador ciclico por ORDEM DE JANELA.
+  // window_3x3 emite W*(H+1) janelas raw por frame; as W primeiras de cada
+  // ciclo sao a "linha de saida -1" virtual (line1/line2 = zero-padding pos
+  // i_rearm) e NUNCA sao pixels reais. Independe de tag e de temporizacao
+  // de fronteira - so do invariante geometrico (docs/MODELO_LATENCIA_PIPELINE.md).
+  localparam int WinCntWidth = $clog2(PaddedTotal);
 
-  logic [DiscardCntWidth-1:0] discard_cnt_r;
-  logic                       warmup_done_r;
+  logic [WinCntWidth-1:0] win_cnt_r;
+  logic                   win_is_spurious;
 
-  // INALTERADO: continua contando pulsos de win_valid (saida de
-  // window_3x3), nao afetado pelo novo skid - window_3x3 continua
-  // emitindo a mesma sequencia de pulsos de sempre, so com temporizacao
-  // de chegada diferente por causa do buffer elastico a montante.
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      discard_cnt_r <= '0;
-      warmup_done_r <= 1'b0;
-    end else if (!warmup_done_r && win_valid) begin
-      if (discard_cnt_r == DiscardCntWidth'(IMG_WIDTH - 1)) warmup_done_r <= 1'b1;
-      else discard_cnt_r <= discard_cnt_r + 1'b1;
+      win_cnt_r <= '0;
+    end else if (win_valid) begin
+      win_cnt_r <= (win_cnt_r == WinCntWidth'(PaddedTotal - 1)) ? '0 : (win_cnt_r + 1'b1);
     end
   end
+
+  assign win_is_spurious = (win_cnt_r < WinCntWidth'(IMG_WIDTH));
 
   // INALTERADO: win_valid_real continua exigindo janela geometricamente
   // pura (win_window_valid_geom) - agora com o residuo pequeno e
@@ -233,7 +234,7 @@ module sobel_multicycle #(
   // (2 janelas impuras por fronteira de frame, sempre descartadas
   // aqui, nunca silenciosamente erradas).
   logic win_valid_real;
-  assign win_valid_real = win_valid && warmup_done_r && win_window_valid_geom;
+  assign win_valid_real = win_valid && !win_is_spurious && win_window_valid_geom;
 
   logic gate_fsm_ok;
   logic accept_sample;
