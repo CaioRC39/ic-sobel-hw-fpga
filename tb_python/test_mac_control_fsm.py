@@ -13,7 +13,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge
 
-from _cocotb_helpers import capture_errors, run_isolated
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 8
 COEFF_WIDTH = 3
@@ -231,31 +231,26 @@ def test_mac_control_fsm_contract_violation_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_mac_control_fsm_violation")
 
-    with capture_errors() as capture:
-        run_isolated(
-            "test_contract_violation_detected",
-            verilog_sources=[
-                os.path.join(proj_root, "rtl", "common", "abs_saturate.sv"),
-                os.path.join(proj_root, "rtl", "common", "magnitude_l1.sv"),
-                os.path.join(proj_root, "rtl", "multicycle", "mac_unit.sv"),
-                os.path.join(proj_root, "rtl", "multicycle", "kernel_rom.sv"),
-                os.path.join(proj_root, "rtl", "multicycle", "mac_control_fsm.sv"),
-            ],
-            includes=[os.path.join(proj_root, "include")],
-            toplevel="mac_control_fsm",
-            module="test_mac_control_fsm",
-            parameters={
-                "DATA_WIDTH": DATA_WIDTH,
-                "COEFF_WIDTH": COEFF_WIDTH,
-                "ACC_WIDTH": ACC_WIDTH,
-            },
-            compile_args=["-g2012", "-Wall"],
-            sim_build=sim_build,
-        )
-
-    assert capture.found, (
-        "esperava que o $error de violacao de contrato (mac_control_fsm.sv) disparasse "
-        "ao manter i_valid=1 com a FSM ocupada, mas nenhum ERROR foi detectado"
+    run_isolated(
+        "test_contract_violation_detected",
+        verilog_sources=[
+            os.path.join(proj_root, "rtl", "common", "abs_saturate.sv"),
+            os.path.join(proj_root, "rtl", "common", "magnitude_l1.sv"),
+            os.path.join(proj_root, "rtl", "multicycle", "mac_unit.sv"),
+            os.path.join(proj_root, "rtl", "multicycle", "kernel_rom.sv"),
+            os.path.join(proj_root, "rtl", "multicycle", "mac_control_fsm.sv"),
+        ],
+        includes=[os.path.join(proj_root, "include")],
+        toplevel="mac_control_fsm",
+        module="test_mac_control_fsm",
+        parameters={
+            "DATA_WIDTH": DATA_WIDTH,
+            "COEFF_WIDTH": COEFF_WIDTH,
+            "ACC_WIDTH": ACC_WIDTH,
+        },
+        compile_args=["-g2012", "-Wall"],
+        sim_build=sim_build,
+        expect_errors=4,  # i_valid=1 por 5 ciclos com a FSM ocupada (medido)
     )
 
 

@@ -23,7 +23,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge
 
-from _cocotb_helpers import capture_errors, run_isolated
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 8
 IMG_WIDTH = 6
@@ -281,22 +281,18 @@ def test_window_3x3_contract_violation_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_window_3x3_violation")
 
-    with capture_errors() as capture:
-        run_isolated(
-            "test_contract_violation_detected",
-            verilog_sources=[
-                os.path.join(proj_root, "rtl", "common", "window_3x3.sv"),
-            ],
-            includes=[os.path.join(proj_root, "include")],
-            toplevel="window_3x3",
-            module="test_window_3x3",
-            parameters={"DATA_WIDTH": DATA_WIDTH, "IMG_WIDTH": IMG_WIDTH},
-            compile_args=["-g2012", "-Wall"],
-            sim_build=sim_build,
-        )
-
-    assert capture.found, (
-        "esperava que o $error de violacao de contrato disparasse, mas nao disparou"
+    run_isolated(
+        "test_contract_violation_detected",
+        verilog_sources=[
+            os.path.join(proj_root, "rtl", "common", "window_3x3.sv"),
+        ],
+        includes=[os.path.join(proj_root, "include")],
+        toplevel="window_3x3",
+        module="test_window_3x3",
+        parameters={"DATA_WIDTH": DATA_WIDTH, "IMG_WIDTH": IMG_WIDTH},
+        compile_args=["-g2012", "-Wall"],
+        sim_build=sim_build,
+        expect_errors=1,
     )
 
 

@@ -14,7 +14,7 @@ import os
 import cocotb
 from cocotb.triggers import Timer
 
-from _cocotb_helpers import capture_errors, run_isolated
+from _cocotb_helpers import run_isolated
 
 COEFF_WIDTH = 3
 
@@ -132,24 +132,18 @@ def test_kernel_rom_invalid_tap_idx_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_kernel_rom_invalid_tap_idx")
 
-    with capture_errors() as capture:
-        run_isolated(
-            "test_invalid_tap_idx_safe_and_error",
-            verilog_sources=[
-                os.path.join(proj_root, "rtl", "multicycle", "kernel_rom.sv"),
-            ],
-            includes=[os.path.join(proj_root, "include")],
-            toplevel="kernel_rom",
-            module="test_kernel_rom",
-            parameters={"COEFF_WIDTH": COEFF_WIDTH},
-            compile_args=["-g2012", "-Wall"],
-            sim_build=sim_build,
-        )
-
-    # 2 enderecos invalidos (6,7) x 2 kernels (Gx,Gy) = 4 disparos esperados.
-    expected_violations = 4
-    assert capture.count == expected_violations, (
-        f"esperava {expected_violations} disparos de $error, mas contei {capture.count}"
+    run_isolated(
+        "test_invalid_tap_idx_safe_and_error",
+        verilog_sources=[
+            os.path.join(proj_root, "rtl", "multicycle", "kernel_rom.sv"),
+        ],
+        includes=[os.path.join(proj_root, "include")],
+        toplevel="kernel_rom",
+        module="test_kernel_rom",
+        parameters={"COEFF_WIDTH": COEFF_WIDTH},
+        compile_args=["-g2012", "-Wall"],
+        sim_build=sim_build,
+        expect_errors=4,  # 2 enderecos invalidos (6,7) x 2 kernels (Gx,Gy)
     )
 
 

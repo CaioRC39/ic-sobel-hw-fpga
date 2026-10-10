@@ -39,7 +39,10 @@ module sobel_multicycle #(
     input  logic [DATA_WIDTH-1:0] i_pixel,
     output logic                  o_ready,
     output logic                  o_valid,
-    output logic [DATA_WIDTH-1:0] o_pixel
+    output logic [DATA_WIDTH-1:0] o_pixel,
+    // status de integridade do pipeline (sticky, limpo so por reset) - ver bloco
+    // "o_status" no fim do modulo. bit0=E1 overflow, bit1=E2 balanco, bit2=D dessincronia
+    output logic [2:0]            o_status
 );
 
   localparam int unsigned RealTotal = IMG_WIDTH * IMG_HEIGHT;
@@ -96,7 +99,7 @@ module sobel_multicycle #(
   logic                    lw_skid_valid;
   logic [DATA_WIDTH-1:0]   lw_skid_curr, lw_skid_line1, lw_skid_line2;
   logic                    lw_skid_curr_tag, lw_skid_line1_tag, lw_skid_line2_tag;
-  logic                    lw_skid_overflow;  // nao conectado de proposito - ver nota abaixo
+  logic                    lw_skid_overflow;  // consumido pelo bit 0 de o_status (E1)
 
   line_window_skid #(
       .DATA_WIDTH(DATA_WIDTH),
@@ -129,16 +132,15 @@ module sobel_multicycle #(
       .o_line2_tag       (lw_skid_line2_tag),
       .o_overflow        (lw_skid_overflow)
   );
-  // lw_skid_overflow deixado sem consumo alem do proprio $error interno
-  // do modulo - mesmo padrao ja usado para skid_fifo2's o_overflow e
-  // para kernel_rom's o_addr_valid: saida nao conectada a mais nada nao
-  // e erro, o alarme de simulacao ja cobre a violacao de contrato
-  // independente de conexao externa.
+  // lw_skid_overflow e skid_overflow alimentam o bit 0 (E1) de o_status: ao
+  // contrario do $error (so simulacao), sobrevivem em hardware sintetizado.
 
   logic                    win_ready;
   logic                    win_valid;
   logic [9*DATA_WIDTH-1:0] win_window;
+  /* verilator lint_off UNUSEDSIGNAL */
   logic                    win_tag;               // nao consumido ainda
+  /* verilator lint_on UNUSEDSIGNAL */
   logic                    win_window_valid_geom;
 
   window_3x3 #(
@@ -180,6 +182,8 @@ module sobel_multicycle #(
   // skid_fifo2 apos integrar line_window_skid". Continua um modulo
   // deliberadamente SEPARADO de line_window_skid (razao inalterada, ver
   // secao "Trade-off de fundir skid_fifo2.sv... com o novo skid").
+  logic skid_overflow;  // consumido pelo bit 0 de o_status (E1)
+
   skid_fifo2 #(
       .DATA_WIDTH(9 * DATA_WIDTH)
   ) u_skid (
@@ -190,6 +194,7 @@ module sobel_multicycle #(
       .i_downstream_ready(fsm_ready),
       .o_valid           (fsm_i_valid),
       .o_data            (fsm_i_window),
+      .o_overflow        (skid_overflow),
       .o_room            (skid_room)
   );
 
@@ -277,5 +282,112 @@ module sobel_multicycle #(
       frame_tag_r <= ~frame_tag_r;
     end
   end
+
+  // ---------------------------------------------------------------------
+  // o_status: monitor de integridade do pipeline (Ressalva 3 da Auditoria 01).
+  // 3 bits STICKY (so o reset limpa), sintetizaveis, so sinalizam - nao ha
+  // autocorrecao (decisao registrada: autocorrigir esconderia o erro e o dano
+  // de uma perda a montante esta em 2 contadores, nao so em 1).
+  //
+  //  bit0 (E1): overflow de u_skid ou u_lw_skid. Perda por causa conhecida,
+  //             sinalizada NO INSTANTE do evento.
+  //  bit1 (E2): balanco de janelas. bal_r conta +1 por janela real que tenta
+  //             entrar em u_skid e -1 por pixel que sai da FSM. Com a FSM
+  //             ociosa e o skid vazio (fsm_ready && !fsm_i_valid) o saldo
+  //             tem de ser 0. Pega perda E duplicacao a jusante de win_valid_real.
+  //  bit2 (D) : dessincronia a montante (perda de amostra antes de window_3x3).
+  //             Com o pipeline drenado, win_cnt_r tem de valer
+  //             feed_cnt_r - (col_feed_r != 0). Ver docs (Fase 2, sondas v2/v3).
+  //
+  // Modelo de falhas (declarado): detecta perda/duplicacao/dessincronia de
+  // janelas. NAO detecta erro de VALOR de pixel, nem perda de pulso de o_valid
+  // por consumidor externo (a saida nao tem ready). Perda + duplicacao dentro
+  // de um mesmo intervalo entre verificacoes se compensam em bit1 (risco
+  // residual aceito; perda por overflow e pega por bit0 independentemente).
+  //
+  // Todos os termos abaixo dependem so de REGISTRADORES (ou de nets derivados
+  // deles), nunca de i_valid de entrada - mesma classe de latencia, sem
+  // misturar instantes de decisao diferentes.
+  // ---------------------------------------------------------------------
+  localparam int ColFeedWidth = $clog2(IMG_WIDTH);
+  localparam logic [ColFeedWidth-1:0] LastColFeed = ColFeedWidth'(IMG_WIDTH - 1);
+
+  // Coluna da amostra consumida (= feed_cnt_r mod IMG_WIDTH, sem divisor:
+  // PaddedTotal e multiplo de IMG_WIDTH, entao os dois wraps coincidem).
+  logic [ColFeedWidth-1:0] col_feed_r;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      col_feed_r <= '0;
+    end else if (consume_sample) begin
+      col_feed_r <= (col_feed_r == LastColFeed) ? '0 : (col_feed_r + 1'b1);
+    end
+  end
+
+  // E1
+  logic e1_event;
+  assign e1_event = skid_overflow || lw_skid_overflow;
+
+  // E2: bal_r aritmetica modular de 4 bits (so importa bal_r != 0).
+  logic [3:0] bal_r;
+  logic       e2_check;
+  logic       e2_mismatch;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      bal_r <= '0;
+    end else begin
+      bal_r <= bal_r + {3'b0, win_valid_real} - {3'b0, o_valid};
+    end
+  end
+
+  // fsm_ready && !fsm_i_valid implica skid vazio (o_valid do skid e
+  // count!=0 && ready) e FSM em S_IDLE (sem saida pendente).
+  assign e2_check    = fsm_ready && !fsm_i_valid;
+  assign e2_mismatch = e2_check && (bal_r != '0);
+
+  // D: pipeline drenado = nada em voo entre line_buffer, u_lw_skid,
+  // window_3x3 (win_ready = fora do ciclo fantasma) e u_skid/FSM.
+  logic                    drained_d;
+  logic [FeedCntWidth-1:0] win_cnt_expected;
+  logic                    d_mismatch;
+
+  assign drained_d = !lb_valid && !win_valid && !lw_skid_valid && win_ready && e2_check;
+  assign win_cnt_expected = (col_feed_r != '0) ? (feed_cnt_r - 1'b1) : feed_cnt_r;
+  assign d_mismatch = drained_d && (win_cnt_expected != FeedCntWidth'(win_cnt_r));
+
+  logic [2:0] status_r;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      status_r <= '0;
+    end else begin
+      status_r <= status_r | {d_mismatch, e2_mismatch, e1_event};
+    end
+  end
+
+  assign o_status = status_r;
+
+  // synthesis translate_off
+  // Localiza a falha em simulacao (1 mensagem por bit, na 1a subida).
+  /* verilator lint_off SYNCASYNCNET */
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      if (e1_event && !status_r[0]) begin
+        $error("sobel_multicycle: o_status[0] (E1) - overflow de skid (u_skid=%0d u_lw_skid=%0d)",
+               skid_overflow, lw_skid_overflow);
+      end
+      if (e2_mismatch && !status_r[1]) begin
+        $error("sobel_multicycle: o_status[1] (E2) - balanco de janelas bal=%0d feed_cnt=%0d win_cnt=%0d",
+               $signed(bal_r), feed_cnt_r, win_cnt_r);
+      end
+      if (d_mismatch && !status_r[2]) begin
+        $error("sobel_multicycle: o_status[2] (D) - dessincronia feed_cnt=%0d col_feed=%0d win_cnt=%0d esperado=%0d",
+               feed_cnt_r, col_feed_r, win_cnt_r, win_cnt_expected);
+      end
+    end
+  end
+  /* verilator lint_on SYNCASYNCNET */
+  // synthesis translate_on
 
 endmodule

@@ -116,7 +116,8 @@ module line_window_skid #(
   assign room_calc = {1'b0, count_r} + {1'b0, CntW'(i_push)} - {1'b0, CntW'(pop)};
   assign o_room = room_calc < (CntW + 1)'(DEPTH);
 
-  wire [PW-1:0] push_data = {i_curr, i_line1, i_line2, i_curr_tag, i_line1_tag, i_line2_tag};
+  logic [PW-1:0] push_data;
+  assign push_data = {i_curr, i_line1, i_line2, i_curr_tag, i_line1_tag, i_line2_tag};
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -146,6 +147,7 @@ module line_window_skid #(
   assign o_overflow = i_push && (count_r == CntW'(DEPTH)) && !pop;
 
   // synthesis translate_off
+  /* verilator lint_off SYNCASYNCNET */
   // Checagem de simulacao: violacao do contrato de interface (push com
   // o buffer cheio e sem pop simultaneo - quem gateia i_push via
   // o_room, seguindo o contrato, nunca deveria fazer isso acontecer).
@@ -155,6 +157,7 @@ module line_window_skid #(
              "e sem pop simultaneo, amostra seria perdida");
     end
   end
+  /* verilator lint_on SYNCASYNCNET */
   // synthesis translate_on
 
 endmodule

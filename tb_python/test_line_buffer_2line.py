@@ -4,7 +4,7 @@ import random
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge
-from cocotb_test.simulator import run
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 8
 IMG_WIDTH = 6
@@ -245,7 +245,12 @@ def test_line_buffer_2line_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_line_buffer_2line")
 
-    run(
+    run_isolated(
+        "test_reset_state,test_delay_and_zero_padding,test_ignores_invalid_cycles,"
+        "test_midstream_reset,test_tag_constant_within_frame_always_matches,"
+        "test_tag_lockstep_across_3_frame_boundaries,"
+        "test_tag_survives_frame_boundary_in_memory,"
+        "test_rearm_prevents_residual_tag_leak",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "line_buffer_2line.sv"),
         ],
@@ -256,7 +261,6 @@ def test_line_buffer_2line_runner():
         compile_args=["-g2012", "-Wall"],
         sim_build=sim_build,
     )
-
 
 if __name__ == "__main__":
     test_line_buffer_2line_runner()

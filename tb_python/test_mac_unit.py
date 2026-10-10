@@ -12,7 +12,7 @@ import os
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge
-from cocotb_test.simulator import run
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 8
 COEFF_WIDTH = 3
@@ -204,7 +204,11 @@ def test_mac_unit_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_mac_unit")
 
-    run(
+    run_isolated(
+        "test_reset_state,test_each_coefficient,test_accumulation_sequence,"
+        "test_full_gx_sequence,test_full_gy_sequence,test_boundary_max_min,"
+        "test_mac_en_gating,test_clear_priority_over_mac_en,"
+        "test_unexpected_coefficient_handled_safely",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "multicycle", "mac_unit.sv"),
         ],

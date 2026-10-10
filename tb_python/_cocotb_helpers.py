@@ -14,11 +14,19 @@ from contextlib import contextmanager
 from cocotb_test.simulator import run as _cocotb_run
 
 
-def run_isolated(testcase, **kwargs):
-    """Roda uma simulacao cocotb restringindo a execucao a UMA ou MAIS
-    corrotinas especificas do modulo, por nome.
+def run_isolated(testcase=None, *, expect_errors=0, **kwargs):
+    """Roda uma simulacao cocotb, opcionalmente restringindo a execucao a
+    UMA ou MAIS corrotinas por nome, e GARANTE que o numero de linhas
+    "ERROR:" (`$error` do RTL) no log bate com `expect_errors`.
 
-    Corrige um bug real de versoes desencontradas entre cocotb-test
+    GUARDA CONTRA $error ESCONDIDO (P15): um `$error` so imprime texto; o
+    teste cocotb nao falha por causa dele, e com `pytest -q` o log de
+    teste aprovado nem aparece. Por isso o padrao e `expect_errors=0`:
+    qualquer `$error` inesperado derruba o teste. Testes de "caminho
+    errado" declaram quantos erros esperam (contagem EXATA - se o RTL
+    passar a emitir mais ou menos, o teste falha e obriga a olhar).
+
+    Corrige tambem um bug real de versoes desencontradas entre cocotb-test
     0.2.6 e cocotb 2.0+: o parametro `testcase=` de
     `cocotb_test.simulator.run()` define a variavel de ambiente antiga
     "TESTCASE", que o cocotb 2.0+ ignora silenciosamente (ele espera
@@ -31,8 +39,10 @@ def run_isolated(testcase, **kwargs):
 
     Args:
         testcase: nome de uma corrotina (str), ou varios nomes
-            separados por virgula - mesmo formato que o parametro
-            testcase= aceitaria, se funcionasse.
+            separados por virgula. `None` (padrao) roda TODAS as
+            corrotinas do modulo.
+        expect_errors: numero EXATO de linhas "ERROR:" esperadas no log
+            (padrao 0). Ver acima.
         **kwargs: repassados diretamente para
             cocotb_test.simulator.run() (verilog_sources, toplevel,
             module, parameters, compile_args, sim_build, etc.)
@@ -45,12 +55,20 @@ def run_isolated(testcase, **kwargs):
             module="test_meu_modulo",
             parameters={...},
             sim_build="sim/sim_build_meu_modulo",
+            expect_errors=0,
         )
     """
     extra_env = dict(kwargs.pop("extra_env", None) or {})
-    extra_env["COCOTB_TESTCASE"] = testcase
+    if testcase is not None:
+        extra_env["COCOTB_TESTCASE"] = testcase
     kwargs["extra_env"] = extra_env
-    _cocotb_run(**kwargs)
+    with capture_errors() as capture:
+        _cocotb_run(**kwargs)
+    assert capture.count == expect_errors, (
+        f"Guarda de $error (run_isolated): esperava {expect_errors} linha(s) 'ERROR:' no log da "
+        f"simulacao, obtive {capture.count}. Se o RTL deveria emitir esses erros, declare "
+        f"expect_errors={capture.count} no teste; se nao, ha um $error escondido a investigar."
+    )
 
 
 class ErrorLogCapture(logging.Handler):

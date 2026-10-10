@@ -164,7 +164,7 @@ module line_buffer_2line #(
       // ciclo de cada novo frame, fazendo warm1 voltar a falso e o
       // zero-padding de borda superior se repetir a cada fronteira de
       // frame, nao so no power-up.
-      if (i_rearm) warmup1_cnt_r <= 1'b1;
+      if (i_rearm) warmup1_cnt_r <= WarmupWidth'(1);
       else if (!warm1) warmup1_cnt_r <= warmup1_cnt_r + 1'b1;
     end
   end
@@ -209,7 +209,7 @@ module line_buffer_2line #(
     end else if (i_valid) begin
       mem2[wr_ptr2_r] <= {tag1_val, line1_val};
       wr_ptr2_r <= (wr_ptr2_r == LastPtr) ? '0 : (wr_ptr2_r + 1'b1);
-      if (i_rearm) warmup2_cnt_r <= 1'b1;
+      if (i_rearm) warmup2_cnt_r <= WarmupWidth'(1);
       else if (!warm2) warmup2_cnt_r <= warmup2_cnt_r + 1'b1;
     end
   end

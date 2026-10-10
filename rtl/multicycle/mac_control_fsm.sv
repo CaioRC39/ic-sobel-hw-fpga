@@ -140,6 +140,8 @@ module mac_control_fsm #(
 
   assign kr_gy = is_gy_mac;
 
+  // saida o_addr_valid deixada sem conexao de proposito (ARQUITETURA_MULTICICLO.md 5.3)
+  /* verilator lint_off PINMISSING */
   kernel_rom #(
       .COEFF_WIDTH(COEFF_WIDTH)
   ) u_kernel_rom (
@@ -148,6 +150,7 @@ module mac_control_fsm #(
       .o_win_pos(kr_win_pos),
       .o_coeff(kr_coeff)
   );
+  /* verilator lint_on PINMISSING */
 
   // ---------------------------------------------------------------------
   // mac_unit: 1 unica instancia, reaproveitada para Gx e depois Gy.

@@ -30,7 +30,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge, Timer
 
-from _cocotb_helpers import capture_errors, run_isolated
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 9 * 8
 
@@ -241,23 +241,18 @@ def test_skid_fifo2_overflow_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_skid_fifo2_overflow")
 
-    with capture_errors() as capture:
-        run_isolated(
-            "test_overflow_contract_violation",
-            verilog_sources=[
-                os.path.join(proj_root, "rtl", "multicycle", "skid_fifo2.sv"),
-            ],
-            includes=[os.path.join(proj_root, "include")],
-            toplevel="skid_fifo2",
-            module="test_skid_fifo2",
-            parameters={"DATA_WIDTH": DATA_WIDTH},
-            compile_args=["-g2012", "-Wall"],
-            sim_build=sim_build,
-        )
-
-    assert capture.count == 1, (
-        f"esperava exatamente 1 disparo do $error de overflow (1 violacao de contrato "
-        f"neste roteiro), obtido={capture.count}"
+    run_isolated(
+        "test_overflow_contract_violation",
+        verilog_sources=[
+            os.path.join(proj_root, "rtl", "multicycle", "skid_fifo2.sv"),
+        ],
+        includes=[os.path.join(proj_root, "include")],
+        toplevel="skid_fifo2",
+        module="test_skid_fifo2",
+        parameters={"DATA_WIDTH": DATA_WIDTH},
+        compile_args=["-g2012", "-Wall"],
+        sim_build=sim_build,
+        expect_errors=1,
     )
 
 

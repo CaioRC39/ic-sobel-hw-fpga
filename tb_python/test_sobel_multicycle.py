@@ -5,7 +5,7 @@ import numpy as np
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge
-from cocotb_test.simulator import run
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 8
 COEFF_WIDTH = 3
@@ -204,7 +204,10 @@ def test_sobel_multicycle_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_sobel_multicycle")
 
-    run(
+    run_isolated(
+        "test_reset_state,test_small_image_golden,"
+        "test_small_image_with_external_stalls,test_two_consecutive_frames,"
+        "test_four_consecutive_frames",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "line_buffer_2line.sv"),
             os.path.join(proj_root, "rtl", "common", "window_3x3.sv"),

@@ -8,7 +8,7 @@ import os
 
 import cocotb
 from cocotb.triggers import Timer
-from cocotb_test.simulator import run
+from _cocotb_helpers import run_isolated
 
 DATA_WIDTH = 8
 
@@ -64,7 +64,9 @@ def test_magnitude_l1_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_magnitude_l1")
 
-    run(
+    run_isolated(
+        "test_no_saturation,test_saturation,test_boundary_exact_255_256,"
+        "test_exhaustive_small_range",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "magnitude_l1.sv"),
         ],
