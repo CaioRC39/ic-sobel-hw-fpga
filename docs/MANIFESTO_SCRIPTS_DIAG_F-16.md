@@ -1,5 +1,7 @@
 # Manifesto — Scripts de diagnóstico da sessão F-16 (2026-08-29)
 
+> ***Todos os scripts de teste e diagnóstico relacionados neste manifesto estão no diretório `diagnosticos/` do projeto.***
+
 Todos os scripts abaixo foram executados de verdade em um ambiente de
 reprodução isolado (Icarus 12.0 + cocotb 2.0.1 + pytest, reconstruído a
 partir dos arquivos do Project Knowledge nesta sessão de chat — **não**
@@ -15,8 +17,10 @@ a sessão — para que ninguém reuse a versão errada por engano.
 
 ## Rodar
 
+Os comandos abaixo pressupõem que o terminal está na raiz do projeto.
+
 ```bash
-cd tb_python
+cd diagnosticos
 rm -rf ../sim/sim_build_<nome>
 python3 -m pytest test_<nome>.py -v -s -o log_cli=true --log-cli-level=INFO
 ```
