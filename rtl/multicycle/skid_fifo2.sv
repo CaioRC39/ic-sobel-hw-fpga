@@ -72,6 +72,7 @@ module skid_fifo2 #(
 
   localparam int SkidDepth = 2;
 
+  (* ramstyle = "logic" *)
   logic [DATA_WIDTH-1:0] skid_mem_r[SkidDepth];
   logic                  skid_wr_ptr_r;
   logic                  skid_rd_ptr_r;

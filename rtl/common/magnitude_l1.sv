@@ -23,7 +23,7 @@ module magnitude_l1 #(
   logic [SumWidth-1:0] sum;
   assign sum = i_abs_gx + i_abs_gy;
 
-  localparam logic [SumWidth-1:0] MaxOut = (1 << DATA_WIDTH) - 1;
+  localparam logic [SumWidth-1:0] MaxOut = SumWidth'((1 << DATA_WIDTH) - 1);
 
   assign o_magnitude = (sum > MaxOut) ? {DATA_WIDTH{1'b1}} : sum[DATA_WIDTH-1:0];
 
