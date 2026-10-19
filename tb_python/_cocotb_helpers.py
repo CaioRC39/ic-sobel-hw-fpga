@@ -9,9 +9,97 @@ adicionados no futuro.
 """
 
 import logging
+import functools
+import hashlib
+import json
+import os
+import shutil
+import subprocess
 from contextlib import contextmanager
 
 from cocotb_test.simulator import run as _cocotb_run
+
+# ----------------------------------------------------------------------
+# Gancho de cobertura (Fase 4, plano D). So atua com COV_MODE=1.
+# Verilator mede cobertura; quem decide "passou" continua sendo o Icarus.
+# ----------------------------------------------------------------------
+COV_ARGS = ["--coverage", "-Wno-fatal"]  # -Wno-fatal: aviso de lint nao pode derrubar a campanha
+_COV_DROP = ("-g2012", "-Wall")  # -g2012 e do Icarus; -Wall e o gate de lint, nao o de cobertura
+
+
+def _cov_data_dir():
+    return os.environ.get("COV_DATA_DIR") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sim", "cov_data"
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _verilator_version():
+    exe = shutil.which("verilator")
+    if exe is None:
+        return "AUSENTE"
+    r = subprocess.run([exe, "--version"], capture_output=True, text=True)
+    return f"{exe}: {(r.stdout or r.stderr).strip().splitlines()[0]}"
+
+
+def _cov_prepare(expect_errors, kwargs):
+    """Adapta os kwargs de run() para o modo cobertura. Devolve (kwargs_novos, meta)."""
+    assert os.environ.get("SIM") == "verilator", (
+        "COV_MODE=1 exige SIM=verilator (sem isso nao ha cobertura, so uma simulacao comum)"
+    )
+    if expect_errors:
+        import pytest
+
+        pytest.skip(
+            f"COV_MODE: runner negativo (expect_errors={expect_errors}); "
+            "$error aborta a simulacao no Verilator"
+        )
+    sim_build = kwargs.get("sim_build")
+    assert sim_build, "COV_MODE exige sim_build explicito"
+    base = os.path.basename(str(sim_build).rstrip("/\\"))
+    env = dict(kwargs.get("extra_env") or {})
+    ident = {
+        "toplevel": kwargs.get("toplevel"),
+        "module": kwargs.get("module"),
+        "parameters": kwargs.get("parameters") or {},
+        "extra_env": env,  # inclui COCOTB_TESTCASE
+        "sim_build": base,
+    }
+    digest = hashlib.sha1(json.dumps(ident, sort_keys=True, default=str).encode()).hexdigest()[:8]
+    stem = f"{base}__{digest}"
+    data_dir = _cov_data_dir()
+    os.makedirs(data_dir, exist_ok=True)
+    dat = os.path.join(data_dir, stem + ".dat")
+    side = os.path.join(data_dir, stem + ".json")
+    for p in (dat, side):  # nunca herdar resultado de campanha anterior
+        if os.path.exists(p):
+            os.remove(p)
+    new = dict(kwargs)
+    new["compile_args"] = [
+       a for a in (kwargs.get("compile_args") or []) if a not in _COV_DROP
+    ] + COV_ARGS
+    new["sim_build"] = str(sim_build).rstrip("/\\") + "_cov"
+    new["plus_args"] = list(kwargs.get("plus_args") or []) + [f"+verilator+coverage+file+{dat}"]
+    meta = {
+        "stem": stem,
+        "dat": dat,
+        "json": side,
+        "toplevel": kwargs.get("toplevel"),
+        "module": kwargs.get("module"),
+        "testcase": env.get("COCOTB_TESTCASE"),
+        "parameters": kwargs.get("parameters") or {},
+        "extra_env": env,
+        "sources": [os.path.basename(s) for s in (kwargs.get("verilog_sources") or [])],
+        "sim_build": new["sim_build"],
+        "verilator": _verilator_version(),
+    }
+    return new, meta
+
+
+def _cov_write_meta(meta, status):
+    meta["status"] = status
+    with open(meta["json"], "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=1, default=str)
 
 
 def run_isolated(testcase=None, *, expect_errors=0, **kwargs):
@@ -36,6 +124,8 @@ def run_isolated(testcase=None, *, expect_errors=0, **kwargs):
     pedindo so 1 - as 3 rodaram sem esta correcao). Ver
     docs/ARQUITETURA_MULTICICLO.md, secao 4 (nota metodologica, "Quarta
     pegadinha") para o diagnostico completo.
+
+    COV_MODE=1 (com SIM=verilator): modo cobertura, ver _cov_prepare
 
     Args:
         testcase: nome de uma corrotina (str), ou varios nomes
@@ -62,8 +152,14 @@ def run_isolated(testcase=None, *, expect_errors=0, **kwargs):
     if testcase is not None:
         extra_env["COCOTB_TESTCASE"] = testcase
     kwargs["extra_env"] = extra_env
+    meta = None
+    if os.environ.get("COV_MODE") == "1":
+        kwargs, meta = _cov_prepare(expect_errors, kwargs)
+        _cov_write_meta(meta, "started")
     with capture_errors() as capture:
         _cocotb_run(**kwargs)
+    if meta is not None:
+        _cov_write_meta(meta, "completed")
     assert capture.count == expect_errors, (
         f"Guarda de $error (run_isolated): esperava {expect_errors} linha(s) 'ERROR:' no log da "
         f"simulacao, obtive {capture.count}. Se o RTL deveria emitir esses erros, declare "

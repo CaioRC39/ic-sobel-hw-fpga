@@ -41,7 +41,7 @@ async def _reset(dut):
 
 
 async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.0, seed: int = 0,
-                                    on_cycle=None):
+                                    on_cycle=None, n_expected=None):
     # ALTERADO AQUI: callback opcional, chamado 1x por iteracao do loop
     # JA VALIDADO deste helper (mesmo ponto de amostragem, apos ReadOnly,
     # antes de NextTimeStep) - permite instrumentacao SEM duplicar o
@@ -51,6 +51,7 @@ async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.
 
     rnd = random.Random(seed)
     h, w = image.shape
+    target = h * w if n_expected is None else n_expected
     flat = image.flatten().tolist()
     idx = 0
     collected = []
@@ -79,7 +80,7 @@ async def _feed_image_and_collect(dut, image: np.ndarray, stall_prob: float = 0.
         cycles += 1
         if cycles > max_cycles:
             raise TimeoutError("simulacao excedeu o numero maximo de ciclos esperado")
-        if idx >= len(flat) and len(collected) >= h * w:
+        if idx >= len(flat) and len(collected) >= target:
             break
 
     dut.i_valid.value = 0

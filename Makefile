@@ -19,7 +19,7 @@ SIM_DIR       = sim
 VERIBLE_FMT   = verible-verilog-format
 
 # ===================== TARGETS GERAIS =====================
-.PHONY: all sim format clean help cocotb
+.PHONY: all sim format clean help cocotb cov-clean cov-triage cov-report cov
 
 all: sim
 
@@ -73,3 +73,21 @@ cocotb:
 
 # Alias para facilitar
 test: cocotb
+
+# ===================== COBERTURA (Fase 4, plano D) =====================
+# Exige o Verilator novo no PATH (shell com VERILATOR_ROOT/PATH do 5.052).
+# Informativo: nao falha o make por causa de testes que falham sob Verilator.
+cov-clean:
+	rm -rf $(SIM_DIR)/cov_data $(SIM_DIR)/sim_build_*_cov
+
+cov-triage: cov-clean
+	@command -v verilator && verilator --version
+	mkdir -p $(SIM_DIR)/cov_data
+	cd $(TB_PYTHON_DIR) && COV_MODE=1 SIM=verilator python3 -m pytest -q --tb=line -rfEs \
+		--ignore=test_meta_guard.py --ignore=test_cov_hook.py --ignore=test_cov_report.py \
+		--durations=15 \
+
+cov-report:
+	python3 scripts/cov_report.py --data $(SIM_DIR)/cov_data
+
+cov: cov-triage cov-report
