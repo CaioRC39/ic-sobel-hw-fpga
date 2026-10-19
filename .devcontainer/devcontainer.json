@@ -5,6 +5,16 @@
         "context": ".."
     },
     "remoteUser": "vscode",
+    "mounts": [
+        "source=quartus-install,target=/opt/intelFPGA_lite,type=volume",
+        "source=${localEnv:HOME}/.licenses/questa/license.dat,target=/opt/questa-license/license.dat,type=bind,readonly"
+    ],
+    "containerEnv": {
+        "SALT_LICENSE_SERVER": "/opt/questa-license/license.dat"
+    },
+    "runArgs": [
+        "--mac-address=${localEnv:QUESTA_MAC}"
+    ],
     "customizations": {
         "vscode": {
             "extensions": [
@@ -14,5 +24,5 @@
             ]
         }
     },
-    "postAttachCommand": "echo '✅ Container pronto! LaTeX, Verilator e cocotb estão disponíveis.'"
+    "postAttachCommand": "echo '✅ Container pronto!'"
 }
