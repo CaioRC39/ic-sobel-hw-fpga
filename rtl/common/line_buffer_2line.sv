@@ -118,6 +118,9 @@ module line_buffer_2line #(
   // no limiar de warm1/warm2 abaixo.
   localparam int WarmupWidth = $clog2(IMG_WIDTH + 2);
   localparam logic [PtrWidth-1:0] LastPtr = PtrWidth'(IMG_WIDTH - 1);
+  // Estagio 1: memoria com IMG_WIDTH+1 posicoes (ver comentario no estagio 1)
+  localparam int PtrWidth1 = $clog2(IMG_WIDTH + 1);
+  localparam logic [PtrWidth1-1:0] LastPtr1 = PtrWidth1'(IMG_WIDTH);
   // Limiar de "aquecido": IMG_WIDTH+1, nao IMG_WIDTH. A leitura de mem1 e
   // registrada (read-antes-do-write no MESMO endereco do write deste
   // ciclo, resultado disponivel so no ciclo SEGUINTE) - isso da IMG_WIDTH
@@ -129,16 +132,36 @@ module line_buffer_2line #(
   // Largura da palavra armazenada em mem1/mem2 inclui a tag de
   // proveniencia, empacotada junto do pixel. Layout de cada palavra:
   // bit MSB (indice DATA_WIDTH) = tag; bits [DATA_WIDTH-1:0] = pixel.
+
   localparam int PixTagWidth = DATA_WIDTH + 1;
 
   // ---------------------------------------------------------------------
   // Estagio 1: atraso de 1 linha completa (IMG_WIDTH ciclos de i_valid)
   // ---------------------------------------------------------------------
-  logic [PixTagWidth-1:0] mem1          [IMG_WIDTH];
-  logic [   PtrWidth-1:0] wr_ptr1_r;
+  // CONTRATO DE SÍNTESE — read-before-write:
+  // A leitura (rd_data1_r <= mem1[wr_ptr1_r]) e a escrita
+  // (mem1[wr_ptr1_r] <= {i_tag, i_pixel}) acontecem no MESMO endereço e
+  // no MESMO ciclo. O RTL DEPENDE de o valor lido ser o ANTERIOR
+  // (gravado IMG_WIDTH ciclos atrás), não o pixel sendo escrito agora.
+  //
+  // Em simulação, isso é garantido pela semântica de atribuição
+  // não-bloqueante do SystemVerilog. Em hardware, o M10K do Cyclone V
+  // NÃO SUPORTA "old data" em same-port (só "new data" ou "don't care").
+  // Solução: NÃO usar ramstyle = "no_rw_check" — sem esse atributo, o
+  // Quartus insere lógica de bypass para preservar o comportamento
+  // read-before-write, ao custo de alguns ALMs.
+  //
+  // Para eliminar esse custo no futuro: reescrever para mixed-port
+  // (ponteiros de leitura e escrita separados). Decisão adiada — exigiria
+  // re-verificação completa do line buffer e do F-16.
+  logic [PixTagWidth-1:0] mem1          [IMG_WIDTH+1];
+  logic [  PtrWidth1-1:0] wr_ptr1_r;
+  logic [  PtrWidth1-1:0] wr_ptr1_next;
   logic [PixTagWidth-1:0] rd_data1_r;
   logic [WarmupWidth-1:0] warmup1_cnt_r;
   logic                   warm1;
+
+  assign wr_ptr1_next = (wr_ptr1_r == LastPtr1) ? '0 : (wr_ptr1_r + 1'b1);
 
   // warm1 e combinacional sobre warmup1_cnt_r, que so reflete o rearm 1
   // ciclo DEPOIS de i_rearm=1 (reset sincrono). Sem este AND, no proprio
@@ -156,9 +179,12 @@ module line_buffer_2line #(
       // Le a posicao ANTES de escrever: e o valor gravado IMG_WIDTH
       // ciclos atras (mesma coluna, 1 linha acima). Resultado registrado
       // -> so fica visivel no ciclo seguinte (BRAM-friendly).
-      rd_data1_r <= mem1[wr_ptr1_r];
+      // Le o endereco SEGUINTE ao de escrita: com profundidade IMG_WIDTH+1 ele guarda
+      // o pixel de IMG_WIDTH pulsos atras e nunca coincide com o endereco escrito
+      // neste ciclo (sem read-during-write).
+      rd_data1_r <= mem1[wr_ptr1_next];
       mem1[wr_ptr1_r] <= {i_tag, i_pixel};
-      wr_ptr1_r <= (wr_ptr1_r == LastPtr) ? '0 : (wr_ptr1_r + 1'b1);
+      wr_ptr1_r <= wr_ptr1_next;
       // i_rearm tem prioridade sobre o incremento normal - forca
       // warmup1_cnt_r de volta a 1 (contando o proprio pulso) no primeiro
       // ciclo de cada novo frame, fazendo warm1 voltar a falso e o
@@ -182,7 +208,7 @@ module line_buffer_2line #(
   // e exatamente essa tag real que revela dado remanescente do frame
   // ANTERIOR ainda residente na memoria circular (a causa raiz do
   // Achado F-02, resolvida pela Alternativa 3-C via i_rearm).
-  assign tag1_val = warm1 ? rd_data1_r[DATA_WIDTH] : i_tag;
+  assign tag1_val  = warm1 ? rd_data1_r[DATA_WIDTH] : i_tag;
 
   // ---------------------------------------------------------------------
   // Estagio 2: mais 1 linha de atraso, alimentado pela saida do estagio 1
@@ -219,7 +245,7 @@ module line_buffer_2line #(
   assign line2_val = warm2 ? mem2[wr_ptr2_r][DATA_WIDTH-1:0] : {DATA_WIDTH{1'b0}};
   // Mesmo raciocinio do estagio 1 - borda superior (nao aquecido)
   // herda i_tag; depois de aquecido, a tag empacotada real decide.
-  assign tag2_val = warm2 ? mem2[wr_ptr2_r][DATA_WIDTH] : i_tag;
+  assign tag2_val  = warm2 ? mem2[wr_ptr2_r][DATA_WIDTH] : i_tag;
 
   // ---------------------------------------------------------------------
   // ALTERADO AQUI (correcao do Achado F-16, Alternativa 1 - Metade 1):
