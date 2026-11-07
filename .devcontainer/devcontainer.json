@@ -7,10 +7,12 @@
     "remoteUser": "vscode",
     "mounts": [
         "source=quartus-install,target=/opt/intelFPGA_lite,type=volume",
-        "source=${localEnv:HOME}/.licenses/questa/license.dat,target=/opt/questa-license/license.dat,type=bind,readonly"
+        "source=${localEnv:HOME}/.licenses/questa/license.dat,target=/opt/questa-license/license.dat,type=bind,readonly",
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
     ],
     "containerEnv": {
-        "SALT_LICENSE_SERVER": "/opt/questa-license/license.dat"
+        "SALT_LICENSE_SERVER": "/opt/questa-license/license.dat",
+        "DISPLAY": "${localEnv:DISPLAY}"
     },
     "runArgs": [
         "--mac-address=${localEnv:QUESTA_MAC}"

@@ -13,3 +13,5 @@ quartus_install/
 license.dat
 *_License.dat
 *.lic
+LaTeX/
+simulation/
