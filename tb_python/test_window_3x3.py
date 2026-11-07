@@ -274,6 +274,7 @@ def test_window_3x3_runner():
         parameters={"DATA_WIDTH": DATA_WIDTH, "IMG_WIDTH": IMG_WIDTH},
         compile_args=["-g2012", "-Wall"],
         sim_build=sim_build,
+        #waves=True
     )
 
 

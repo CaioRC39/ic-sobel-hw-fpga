@@ -80,6 +80,22 @@ async def test_project_actual_range(dut):
         await _check(dut, value)
 
 
+@cocotb.test()
+async def test_most_negative_input_at_project_width(dut):
+    """Extremo de complemento de 2 NA LARGURA REAL (IN_WIDTH=11): -1024 e o valor mais
+    negativo representavel e nao tem positivo na mesma largura (max +1023). O modulo
+    tem de nega-lo com a folga de 1 bit e saturar em 255. Sequencia 0 -> -1024 -> 0
+    garante tambem as 2 direcoes de toggle de abs_val[10] (bit do valor 1024)."""
+    await _check(dut, 0)
+    await _check(dut, -1024)
+    assert int(dut.o_value.value) == 255, "|-1024| deveria saturar em 255"
+    await _check(dut, 0)
+    await _check(dut, 1023)  # maior positivo de 11 bits: tambem satura
+    assert int(dut.o_value.value) == 255
+    await _check(dut, -1024)
+    assert int(dut.o_value.value) == 255
+
+
 def test_abs_saturate_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_abs_saturate")
@@ -91,7 +107,8 @@ def test_abs_saturate_runner():
     run_isolated(
         "test_positive_no_saturation,test_negative_no_saturation,"
         "test_positive_saturation,test_negative_saturation,"
-        "test_boundary_exact_255_256,test_project_actual_range",
+        "test_boundary_exact_255_256,test_project_actual_range,"
+        "test_most_negative_input_at_project_width",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "abs_saturate.sv"),
         ],

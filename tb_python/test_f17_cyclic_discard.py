@@ -102,6 +102,7 @@ def _runner(w, h):
         compile_args=["-g2012", "-Wall"],
         sim_build=os.path.join(root, "sim", f"sim_build_f17_w{w}_h{h}"),
         extra_env={"TEST_IMG_WIDTH": str(w), "TEST_IMG_HEIGHT": str(h)},
+        #waves=True,
     )
 
 

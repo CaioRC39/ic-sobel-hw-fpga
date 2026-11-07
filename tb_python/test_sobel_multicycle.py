@@ -207,7 +207,8 @@ def test_sobel_multicycle_runner():
 
     run_isolated(
         "test_reset_state,test_small_image_golden,"
-        "test_small_image_with_external_stalls,test_two_consecutive_frames,"
+        "test_small_image_with_external_stalls,"
+        "test_two_consecutive_frames,"
         "test_four_consecutive_frames",
         verilog_sources=[
             os.path.join(proj_root, "rtl", "common", "line_buffer_2line.sv"),
@@ -233,6 +234,7 @@ def test_sobel_multicycle_runner():
         },
         compile_args=["-g2012", "-Wall"],
         sim_build=sim_build,
+        #waves=True
     )
 
 

@@ -224,6 +224,7 @@ def test_mac_control_fsm_runner():
         parameters={"DATA_WIDTH": DATA_WIDTH, "COEFF_WIDTH": COEFF_WIDTH, "ACC_WIDTH": ACC_WIDTH},
         compile_args=["-g2012", "-Wall"],
         sim_build=sim_build,
+        #waves=True,
     )
 
 

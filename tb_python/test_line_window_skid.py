@@ -199,7 +199,7 @@ async def test_overflow_contract_violation(dut):
     assert out["overflow"] == 0, "sem push, nao ha overflow"
 
 
-def _runner(testcase, sim_name, expect_errors=0):
+def _runner(testcase, sim_name, expect_errors=0, waves=False):
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return dict(
         testcase=testcase,
@@ -211,16 +211,20 @@ def _runner(testcase, sim_name, expect_errors=0):
         compile_args=["-g2012", "-Wall"],
         sim_build=os.path.join(proj_root, "sim", sim_name),
         expect_errors=expect_errors,
+        waves=waves,
     )
 
 
 def test_line_window_skid_runner():
     run_isolated(
         **_runner(
-            "test_reset_state,test_single_item_all_fields_in_order,"
-            "test_fill_to_depth_and_drain_in_order,test_o_room_formula,"
-            "test_push_pop_simultaneous_when_full_keeps_order",
-            "sim_build_line_window_skid",
+            "test_reset_state,"
+            "test_single_item_all_fields_in_order,"
+            "test_fill_to_depth_and_drain_in_order,"
+            "test_o_room_formula,"
+            "test_push_pop_simultaneous_when_full_keeps_order,",
+            "sim_build_line_window_skid"
+            #waves=True
         )
     )
 

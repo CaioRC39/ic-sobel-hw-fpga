@@ -27,8 +27,8 @@ CODE_KINDS = ("v_line", "v_branch", "v_expr")
 CLASSES = ("inalcancavel", "so-icarus")
 RULE_KINDS = ("toggle", "line", "branch", "expr")
 _REC = re.compile(r"^C '(.*)' (\d+)\s*$")
+_SPEC = re.compile(r"(?:__[A-Z][0-9A-Fa-f]+)+$")  # sufixo(s) de especializacao (ex.: __I4, __I140, __D48)
 _SIG = re.compile(r"^(?P<name>[A-Za-z_]\w*)(?:\[(?P<bit>\d+)\])?:(?P<dir>[01]->[01])$")
-
 
 # ----------------------------------------------------------------------
 # leitura do .dat e agregacao
@@ -59,12 +59,18 @@ def rtl_rel(path):
     return "/".join(rest) if rest else None
 
 
+def norm_page(page):
+    """'v_toggle/line_buffer_2line__I4' e 'v_toggle/line_buffer_2line' sao o MESMO ponto de
+    RTL em configuracoes diferentes: o Verilator so renomeia o modulo especializado."""
+    return _SPEC.sub("", page)
+
+
 def make_key(kv):
     rel = rtl_rel(kv.get("f", ""))
     if rel is None:
         return None
-    return (rel, kv.get("page", "?"), kv.get("l", ""), kv.get("n", ""), kv.get("t", ""),
-            kv.get("o", ""))
+    return (rel, norm_page(kv.get("page", "?")), kv.get("l", ""), kv.get("n", ""),
+            kv.get("t", ""), kv.get("o", ""))
 
 
 def kind_of(key):

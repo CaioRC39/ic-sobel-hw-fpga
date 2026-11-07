@@ -19,7 +19,22 @@ SIM_DIR       = sim
 VERIBLE_FMT   = verible-verilog-format
 
 # ===================== TARGETS GERAIS =====================
-.PHONY: all sim format clean help cocotb cov-clean cov-triage cov-report cov
+.PHONY: all sim format clean help cocotb cov-clean cov-triage cov-report cov frame cov-frame cov-full
+
+# Cobertura do frame cheio (4.8): agrega ao cov_data JA existente (nao apaga nada).
+cov-frame:
+	cd $(TB_PYTHON_DIR) && COV_MODE=1 RUN_SLOW=1 SIM=verilator python3 -m pytest -v -s \
+		-o log_cli=true --log-cli-level=INFO test_frame_640x480.py
+
+# Campanha oficial completa: suite + frame + relatorio (~35 min por estimativa).
+cov-full: cov-triage cov-frame cov-report
+
+# Teste lento de frame completo (Frente 2, 4.7). Fora do `make cocotb`.
+# Variaveis: FRAME_W (640), FRAME_H (480), FRAME_N (2), SIM=icarus|verilator.
+frame:
+	mkdir -p $(SIM_DIR)
+	cd $(TB_PYTHON_DIR) && RUN_SLOW=1 SIM=$(strip $(SIM)) python3 -m pytest -v -s \
+		-o log_cli=true --log-cli-level=INFO test_frame_640x480.py
 
 all: sim
 
@@ -80,14 +95,20 @@ test: cocotb
 cov-clean:
 	rm -rf $(SIM_DIR)/cov_data $(SIM_DIR)/sim_build_*_cov
 
+# Versao do Verilator esperada pelo alvo cov-triage (manter igual ao ARG do Dockerfile).
+VERILATOR_EXPECTED ?= 5.054
+
 cov-triage: cov-clean
-	@command -v verilator && verilator --version
+	@command -v verilator >/dev/null || { echo "ERRO: verilator ausente no PATH"; exit 1; }
+	@verilator --version | grep -q "Verilator $(VERILATOR_EXPECTED) " || \
+		{ echo "ERRO: esperado Verilator $(VERILATOR_EXPECTED), obtido: $$(verilator --version)"; exit 1; }
+	@verilator --version
 	mkdir -p $(SIM_DIR)/cov_data
 	cd $(TB_PYTHON_DIR) && COV_MODE=1 SIM=verilator python3 -m pytest -q --tb=line -rfEs \
 		--ignore=test_meta_guard.py --ignore=test_cov_hook.py --ignore=test_cov_report.py \
-		--durations=15 \
+		--durations=15
 
 cov-report:
-	python3 scripts/cov_report.py --data $(SIM_DIR)/cov_data
+	python3 scripts/cov_report.py --data $(SIM_DIR)/cov_data --min-code 95 --min-toggle 90
 
 cov: cov-triage cov-report

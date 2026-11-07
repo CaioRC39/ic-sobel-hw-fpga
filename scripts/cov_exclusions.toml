@@ -1,0 +1,354 @@
+# Exclusoes de cobertura (Fase 4, etapa 4.4). Lido por scripts/cov_report.py.
+# class = "inalcancavel": o ponto nao ocorre no projeto (prova em 'proof').
+# class = "so-icarus"   : coberto so por runner negativo no Icarus (pulado sob Verilator,
+#                         onde $error aborta); 'proof_test' e verificado pelo agregador
+#                         (arquivo e funcao existem), mas a cobertura NAO e medida.
+# Seletores por TEXTO da linha ou SINAL/BIT, nunca por numero de linha.
+
+# ---------------- mac_unit ----------------
+[[exclude]]
+id = "MU-01"
+file = "multicycle/mac_unit.sv"
+kind = "toggle"
+signal = "pixel_ext"
+bits = "ACC_WIDTH-1:DATA_WIDTH"
+params = { ACC_WIDTH = 11, DATA_WIDTH = 8 }
+class = "inalcancavel"
+reason = "Extensao com zeros: bits constantes 1'b0, nao podem alternar."
+proof = "rtl/multicycle/mac_unit.sv: assign pixel_ext = {{(ACC_WIDTH - DATA_WIDTH) {1'b0}}, i_pixel}"
+
+# ---------------- abs_saturate ----------------
+[[exclude]]
+id = "AS-01"
+file = "common/abs_saturate.sv"
+kind = "toggle"
+signal = "abs_val"
+bits = "IN_WIDTH"
+params = { IN_WIDTH = 11 }
+class = "inalcancavel"
+reason = "Modulo maximo = 2^(IN_WIDTH-1) (valor minimo com sinal): o bit IN_WIDTH nunca liga."
+proof = "rtl/common/abs_saturate.sv: value_ext tem IN_WIDTH+1 bits a partir de i_value de IN_WIDTH bits com sinal"
+
+# ---------------- mac_control_fsm ----------------
+[[exclude]]
+id = "FSM-01"
+file = "multicycle/mac_control_fsm.sv"
+kind = "line"
+text = "default: state_r <= S_IDLE;"
+class = "inalcancavel"
+reason = "Braco default do case de estados: so executa com state_r em 16..31."
+proof = "test_fsm_state_arc_coverage.py afirma 0 estados ilegais; enum de 16 estados validos"
+
+[[exclude]]
+id = "FSM-02"
+file = "multicycle/mac_control_fsm.sv"
+kind = "toggle"
+signal = "state_r"
+bits = "4"
+params = {}
+class = "inalcancavel"
+reason = "O bit 4 de state_r so vale 1 nos estados 16..31, que nao ocorrem."
+proof = "test_fsm_state_arc_coverage.py: 16/16 estados, 0 ilegais"
+
+[[exclude]]
+id = "FSM-03"
+file = "multicycle/mac_control_fsm.sv"
+kind = "expr"
+text = "if (rst_n && i_valid && !o_ready)"
+class = "so-icarus"
+reason = "Condicao do $error de contrato; so o runner negativo a exercita."
+proof = "Runner negativo com expect_errors=4 (pulado sob Verilator)"
+proof_test = "test_mac_control_fsm.py::test_contract_violation_detected"
+
+# ---------------- kernel_rom ----------------
+[[exclude]]
+id = "KR-01"
+file = "multicycle/kernel_rom.sv"
+kind = "line"
+text = "default: begin"
+class = "so-icarus"
+reason = "Bracos default (i_tap_idx fora de 0..5); a FSM nunca os aciona."
+proof = "Runner negativo com expect_errors=4"
+proof_test = "test_kernel_rom.py::test_invalid_tap_idx_safe_and_error"
+
+[[exclude]]
+id = "KR-02"
+file = "multicycle/kernel_rom.sv"
+kind = "toggle"
+signal = "o_addr_valid"
+dir = "1->0"
+class = "so-icarus"
+reason = "o_addr_valid so cai a 0 com i_tap_idx invalido."
+proof = "Runner negativo com expect_errors=4"
+proof_test = "test_kernel_rom.py::test_invalid_tap_idx_safe_and_error"
+
+# ---------------- window_3x3 ----------------
+[[exclude]]
+id = "W3-01"
+file = "common/window_3x3.sv"
+kind = "expr"
+text = "if (rst_n && phantom_pending_r && i_valid)"
+class = "so-icarus"
+reason = "Condicao do $error de contrato de gap entre linhas."
+proof = "Runner negativo com expect_errors=1"
+proof_test = "test_window_3x3.py::test_contract_violation_detected"
+
+# ---------------- line_window_skid ----------------
+[[exclude]]
+id = "LWS-01"
+file = "common/line_window_skid.sv"
+kind = "branch"
+text = "(DEPTH == 1) ? '0 :"
+class = "inalcancavel"
+reason = "Braco DEPTH == 1; o projeto instancia DEPTH = 2 (valor so deste parametro)."
+proof = "rtl/multicycle/sobel_multicycle.sv instancia u_lw_skid com .DEPTH(2)"
+
+[[exclude]]
+id = "LWS-02"
+file = "common/line_window_skid.sv"
+kind = "expr"
+text = "(DEPTH == 1) ? '0 :"
+class = "inalcancavel"
+reason = "Mesma condicao DEPTH == 1 de LWS-01, na categoria expr."
+proof = "rtl/multicycle/sobel_multicycle.sv instancia u_lw_skid com .DEPTH(2)"
+
+[[exclude]]
+id = "LWS-04"
+file = "common/line_window_skid.sv"
+kind = "expr"
+text = "if (rst_n && o_overflow)"
+class = "so-icarus"
+reason = "Condicao do $error de overflow."
+proof = "Runner negativo com expect_errors=1"
+proof_test = "test_line_window_skid.py::test_overflow_contract_violation"
+
+[[exclude]]
+id = "LWS-06"
+file = "common/line_window_skid.sv"
+kind = "toggle"
+signal = "room_calc"
+bits = "2"
+params = {}
+class = "inalcancavel"
+reason = "room_calc = count_r + i_push - pop; com DEPTH=2 o maximo e 3, o bit 2 exige >= 4."
+proof = "rtl/common/line_window_skid.sv: count_r <= DEPTH = 2, i_push <= 1"
+
+# ---------------- skid_fifo2 ----------------
+[[exclude]]
+id = "SK-02"
+file = "multicycle/skid_fifo2.sv"
+kind = "expr"
+text = "if (rst_n && o_overflow)"
+class = "so-icarus"
+reason = "Condicao do $error de overflow."
+proof = "Runner negativo com expect_errors=1"
+proof_test = "test_skid_fifo2.py::test_overflow_contract_violation"
+
+[[exclude]]
+id = "SK-04"
+file = "multicycle/skid_fifo2.sv"
+kind = "toggle"
+signal = "room_calc"
+bits = "2"
+params = {}
+class = "inalcancavel"
+reason = "room_calc = count + push - pop; count <= 2 e push <= 1 dao maximo 3, o bit 2 exige >= 4. Sem negativo: pop exige count != 0."
+proof = "rtl/multicycle/skid_fifo2.sv: skid_count_r em 0..2, i_push de 1 bit, skid_pop = o_valid (count != 0)"
+
+# ---------------- sobel_multicycle: monitor o_status ----------------
+# Os runners de injecao (test_pipeline_status.py) afirmam a mascara EXATA de o_status; sob Verilator
+# eles sao pulados (expect_errors > 0). Cobertos no Icarus, nao medidos.
+[[exclude]]
+id = "SM-01"
+file = "multicycle/sobel_multicycle.sv"
+kind = "expr"
+text = "assign e1_event = skid_overflow"
+class = "so-icarus"
+reason = "Termos de overflow do monitor (bit 0 de o_status)."
+proof = "E1 por fiacao: Force no o_overflow de u_skid e de u_lw_skid"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_skid"
+
+[[exclude]]
+id = "SM-02"
+file = "multicycle/sobel_multicycle.sv"
+kind = "expr"
+text = "if (e1_event && !status_r[0])"
+class = "so-icarus"
+reason = "$error de localizacao do bit 0."
+proof = "E1 por fiacao"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_skid"
+
+[[exclude]]
+id = "SM-03"
+file = "multicycle/sobel_multicycle.sv"
+kind = "expr"
+text = "assign e2_mismatch = e2_check"
+class = "so-icarus"
+reason = "Condicao de balanco de janelas (bit 1)."
+proof = "Injecao B (perda a jusante) acende o bit 1"
+proof_test = "test_pipeline_status.py::test_status_B_sets_bit1"
+
+[[exclude]]
+id = "SM-04"
+file = "multicycle/sobel_multicycle.sv"
+kind = "expr"
+text = "if (e2_mismatch && !status_r[1])"
+class = "so-icarus"
+reason = "$error de localizacao do bit 1."
+proof = "Injecao B"
+proof_test = "test_pipeline_status.py::test_status_B_sets_bit1"
+
+[[exclude]]
+id = "SM-05"
+file = "multicycle/sobel_multicycle.sv"
+kind = "expr"
+text = "assign d_mismatch = drained_d"
+class = "so-icarus"
+reason = "Condicao de dessincronia a montante (bit 2)."
+proof = "Injecao I1 (perda a montante) acende o bit 2"
+proof_test = "test_pipeline_status.py::test_status_I1_sets_bit2"
+
+[[exclude]]
+id = "SM-06"
+file = "multicycle/sobel_multicycle.sv"
+kind = "expr"
+text = "if (d_mismatch && !status_r[2])"
+class = "so-icarus"
+reason = "$error de localizacao do bit 2."
+proof = "Injecao I1"
+proof_test = "test_pipeline_status.py::test_status_I1_sets_bit2"
+
+# toggles do monitor, por sinal e bit
+[[exclude]]
+id = "SM-T01"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "o_status"
+bits = "0"
+params = {}
+class = "so-icarus"
+reason = "o_status[0] so sobe com overflow."
+proof = "E1 por fiacao"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_skid"
+
+[[exclude]]
+id = "SM-T02"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "o_status"
+bits = "1"
+params = {}
+class = "so-icarus"
+reason = "o_status[1] so sobe com perda/duplicacao a jusante."
+proof = "Injecao B"
+proof_test = "test_pipeline_status.py::test_status_B_sets_bit1"
+
+[[exclude]]
+id = "SM-T03"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "o_status"
+bits = "2"
+params = {}
+class = "so-icarus"
+reason = "o_status[2] so sobe com perda a montante."
+proof = "Injecao I1"
+proof_test = "test_pipeline_status.py::test_status_I1_sets_bit2"
+
+[[exclude]]
+id = "SM-T04"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "status_r"
+bits = "0"
+params = {}
+class = "so-icarus"
+reason = "Flag sticky do bit 0."
+proof = "E1 por fiacao"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_skid"
+
+[[exclude]]
+id = "SM-T05"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "status_r"
+bits = "1"
+params = {}
+class = "so-icarus"
+reason = "Flag sticky do bit 1."
+proof = "Injecao B"
+proof_test = "test_pipeline_status.py::test_status_B_sets_bit1"
+
+[[exclude]]
+id = "SM-T06"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "status_r"
+bits = "2"
+params = {}
+class = "so-icarus"
+reason = "Flag sticky do bit 2."
+proof = "Injecao I1"
+proof_test = "test_pipeline_status.py::test_status_I1_sets_bit2"
+
+[[exclude]]
+id = "SM-T07"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "skid_overflow"
+class = "so-icarus"
+reason = "Overflow de u_skid."
+proof = "E1 por fiacao em u_skid"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_skid"
+
+[[exclude]]
+id = "SM-T08"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "lw_skid_overflow"
+class = "so-icarus"
+reason = "Overflow de u_lw_skid."
+proof = "E1 por fiacao em u_lw_skid"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_lw_skid"
+
+[[exclude]]
+id = "SM-T09"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "e1_event"
+class = "so-icarus"
+reason = "OR dos overflows."
+proof = "E1 por fiacao"
+proof_test = "test_pipeline_status.py::test_status_E1_wiring_u_skid"
+
+[[exclude]]
+id = "SM-T10"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "e2_mismatch"
+class = "so-icarus"
+reason = "Balanco de janelas desalinhado."
+proof = "Injecao B"
+proof_test = "test_pipeline_status.py::test_status_B_sets_bit1"
+
+[[exclude]]
+id = "SM-T11"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "d_mismatch"
+class = "so-icarus"
+reason = "Dessincronia a montante."
+proof = "Injecao I1"
+proof_test = "test_pipeline_status.py::test_status_I1_sets_bit2"
+
+[[exclude]]
+id = "SM-T12"
+file = "multicycle/sobel_multicycle.sv"
+kind = "toggle"
+signal = "bal_r"
+bits = "3:2"
+params = {}
+class = "so-icarus"
+reason = "Em operacao normal bal_r <= 3 (skid 2 + FSM 1); os bits 3:2 so alternam com duplicacao (bal_r = -1). INFERENCIA, nao medida."
+proof = "Injecao C (duplicacao) acende o bit 1 de o_status via e2_mismatch"
+proof_test = "test_pipeline_status.py::test_status_C_sets_bit1"

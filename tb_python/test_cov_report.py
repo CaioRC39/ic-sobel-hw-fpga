@@ -191,3 +191,31 @@ def test_main_thresholds_and_exit_codes(tmp_path, capsys):
     assert C.main(["--root", r, "--min-code", "95"]) == 1  # sem a exclusao o bruto (75%) reprova
     out = capsys.readouterr().out
     assert "3/4" in out and "9/10" in out
+
+
+def test_specialized_pages_merge_into_one_point(tmp_path):
+    """Verilator renomeia modulos especializados por parametro (__I4, __I140, __D48): o mesmo
+    ponto de RTL em configuracoes diferentes deve virar UMA chave, somando contagens."""
+    d = tmp_path / "cov"
+    _run(d, "top", [_pt("common/x.sv", "v_toggle/x", 102, "rst_n:1->0", 4, h="x")])
+    _run(d, "w4", [_pt("common/x.sv", "v_toggle/x__I4", 102, "rst_n:1->0", 0, h="s.u")])
+    _run(d, "w320", [_pt("common/x.sv", "v_toggle/x__I140", 102, "rst_n:1->0", 0, h="s.u")])
+    _run(d, "d72", [_pt("common/x.sv", "v_toggle/x__D48", 102, "rst_n:1->0", 0, h="s.u")])
+    agg, _, errs = C.load_campaign(d)
+    assert errs == []
+    assert len(agg.count) == 1
+    (k,) = agg.count
+    assert k[1] == "v_toggle/x"
+    assert agg.count[k] == 4 and agg.cov_by[k] == {"top"}
+    for suffixed in ("v_line/mod__I12", "v_line/mod__I1A", "v_line/mod__D48"):
+        assert C.norm_page(suffixed) == "v_line/mod"
+    assert C.norm_page("v_line/mod") == "v_line/mod"
+
+
+def test_project_exclusions_file_is_valid():
+    """Garante, no Icarus e sem campanha, que o arquivo real de exclusoes e consistente:
+    campos obrigatorios, classes, expressoes de bits e proof_test apontando para testes que existem."""
+    root = Path(__file__).resolve().parent.parent
+    rules = C.load_rules(root / "scripts" / "cov_exclusions.toml")
+    assert rules, "arquivo de exclusoes ausente ou vazio"
+    assert C.validate_rules(rules, root / "tb_python") == []
