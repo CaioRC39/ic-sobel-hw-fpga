@@ -347,26 +347,32 @@ A ordem e o escopo de algumas etapas poderão ser ajustados de acordo com os res
 
 <!-- STATUS:START -->
 
-**Última atualização:** 30/08/2026
-
 ### Etapa atual
 
-#### Implementação e validação da arquitetura multiciclo.
+**Fechamento formal da arquitetura multiciclo (Fase 5: documentação e gate).**
 
-Os módulos comuns e os módulos específicos da arquitetura multiciclo estão implementados e testados individualmente. Porém, uma investigação recente encontrou um **bug real na integração entre dois módulos comuns** (`line_buffer_2line` e `window_3x3`) que produz pixels de saída incorretos — confirmado mesmo em um único frame, sem depender de múltiplos frames ou fronteiras. O bug estava mascarado até agora porque as imagens de teste usadas saturavam a saída no valor máximo (255), escondendo o erro. A arquitetura multiciclo **não pode ser considerada fechada** enquanto esse bug não for corrigido.
+O RTL do multiciclo está **funcionalmente fechado em simulação**. Os bugs F-16 (corrida de latência entre `line_buffer_2line` e `window_3x3`) e F-17 (janelas espúrias a cada frame) foram corrigidos na fonte e validados. O que resta são **condições** do gate, não bloqueadores funcionais:
+
+| Condição | Natureza |
+|---|---|
+| Restaurar 3 testes removidos de `test_window_3x3.py` (F-18; removidos no commit `d5aa31a`) | Verificação |
+| Re-síntese no Quartus (números atuais são anteriores à correção de `mem1`) e decisão do SDC (100 ou 90 MHz) | Síntese |
+| Executar `test_postsynth_sobel.py` na netlist (sem registro de execução) | Verificação |
+| Limites de verificação declarados (frame cheio: 2 frames, `stall=0`; stall só em W ≤ 8) | Escopo |
 
 ### Próximo marco
 
-#### 🎯 Fechar a arquitetura multiciclo
+#### 🎯 Emitir o gate "multiciclo fechado" e iniciar a arquitetura Pipeline
 
-Para considerar a primeira arquitetura concluída:
-
-1. ~~Consolidar o `sobel_multicycle.sv`~~ — feito, módulo existe e integra as peças;
-2. ~~Executar o teste de integração ponta a ponta~~ — feito, suíte de testes existe e cobre a maioria dos casos;
-3. **Corrigir o bug de conteúdo incorreto identificado** (linha de dados entre `line_buffer_2line` e `window_3x3`) — bloqueador atual, não resolvido;
-4. Validar corretamente múltiplos frames consecutivos — o teste dedicado a isso (`test_four_consecutive_frames`) é justamente o que revelou o bug acima;
-5. Mitigar risco de perda de dado sob rajada de pixels (buffer interno pequeno demais em cenários extremos) — solução já decidida (aumentar a capacidade do buffer), aguardando implementação;
-6. Atualizar a documentação técnica e a auditoria correspondente.
+1. ~~Consolidar `sobel_multicycle.sv`~~ — feito.
+2. ~~Teste de integração ponta a ponta~~ — feito (golden, stalls, multi-frame, frame 640×480).
+3. ~~Corrigir F-16 e F-17~~ — feito, na fonte.
+4. ~~Validar múltiplos frames consecutivos~~ — feito (`test_four_consecutive_frames`, `test_f17_cyclic_discard`).
+5. ~~Mitigar perda de dado sob rajada~~ — **obsoleto**: o gating A3 serializa as entregas; medido `max_u_skid = max_u_lw_skid = 2`, overflow 0.
+6. ~~Monitor de integridade `o_status`~~ — feito.
+7. ~~Cobertura de código~~ — feito (code 425/426, toggle 3596/3599).
+8. **Atualizar documentação e auditoria** — em andamento (`ARQUITETURA_MULTICICLO.md` v2.0 entregue; falta este `STATUS.md`, `AUDITORIA_01`, `ESPECIFICACAO_SOBEL.md`).
+9. **Gate formal** — "GO WITH CONDITIONS" (ver `docs/AUDITORIA_01_PRE_MULTICICLO.md`).
 
 Após isso:
 
