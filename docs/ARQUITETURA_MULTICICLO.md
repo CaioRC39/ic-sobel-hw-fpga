@@ -4,7 +4,7 @@
 |---|---|
 | **Versão** | 2.0 (reescrita completa) |
 | **Data** | 2026-11-07 |
-| **Status** | RTL implementado e verificado em simulação. Síntese caracterizada no Cyclone V, **pendente de re-síntese** (ver §9). Gate formal em `docs/AUDITORIA_01_PRE_MULTICICLO.md` |
+| **Status** | **Fechada** em funcional e verificação (gate GO, `AUDITORIA_01` §17). Síntese: números do Cyclone V são **históricos, anteriores à correção de `mem1`**; re-síntese **diferida** para a etapa de FPGA (D-11) |   
 | **Evidência de referência** | Suíte Icarus: 79 passed. Cobertura (Verilator 5.054): code 425/426, toggle 3596/3599. Frame 640×480×2: golden OK, `o_status=000` |
 
 > **Convenção de honestidade.** Todo número tem fonte (teste, relatório ou documento do projeto). O que é inferência está marcado como **[inferência]**; o que não foi verificado, como **[não verificado]**.
@@ -782,9 +782,9 @@ O projeto é criado por `constraints/setup_proj.tcl` (`quartus_sh -t`), compilad
 - `mem2` do `line_buffer_2line` virou MLAB espalhado (leitura assíncrona, aviso 276007), explicando os 94% de ALMs. A leitura combinacional do estágio 2 é uma decisão de projeto (§4.1) que tem custo de área.
 - **[inferência]** `col_feed_r` aparece no caminho crítico: o monitor `o_status` foi adicionado antes dessa síntese? **[não verificado]**.
 
-### 9.3 Pendências de síntese
+### 9.3 Pendências de síntese (diferidas, D-11)
 
-Re-síntese pós-slot-extra; decisão do SDC (100 MHz mantido ou 90 MHz); `ramstyle="logic"` em `skid_fifo2` (comparar M10K); decisão sobre `mem2` em MLAB; execução do `test_postsynth_sobel.py` na netlist; potência (VCD + `quartus_pow`); segundo vendor (Vivado/Artix-7).
+Todas ficam para a etapa de implementação em FPGA, com as 3 arquiteturas na mesma ferramenta e dispositivo: re-síntese pós-slot-extra, decisão do SDC (100 ou 90 MHz), `ramstyle` de `skid_fifo2`, `mem2` em MLAB, `test_postsynth_sobel.py` com `NETLIST=`, potência e segundo vendor. **Não bloqueiam o fechamento.**
 
 ---
 
@@ -808,11 +808,11 @@ Re-síntese pós-slot-extra; decisão do SDC (100 MHz mantido ou 90 MHz); `ramst
 
 ### 10.3 Síntese
 
-- [x] Quartus: síntese e fit sem erros (anterior à slot extra)
-- [ ] Re-síntese pós-correção
-- [ ] Timing met @ 100 MHz (hoje −0,199 ns)
-- [ ] Potência
-- [ ] Vivado / Artix-7
+- [x] Quartus: síntese e fit sem erros (histórico, anterior à slot extra de `mem1`)
+- [ ] Re-síntese pós-correção — **diferido (D-11)**
+- [ ] Timing met @ 100 MHz (histórico: −0,199 ns) — **diferido (D-11)**
+- [ ] Potência — **diferido (D-11)**
+- [ ] Vivado / Artix-7 — **diferido (D-11)**
 
 ---
 
@@ -820,13 +820,13 @@ Re-síntese pós-slot-extra; decisão do SDC (100 MHz mantido ou 90 MHz); `ramst
 
 | # | Pendência | Natureza |
 |---|---|---|
-| 1 | Restaurar 3 testes de `window_3x3` (F-18) | Verificação |
+| 1 | ~~Restaurar 3 testes de `window_3x3` (F-18)~~ Concluído em 2026-11-14 | — |
 | 2 | Atualizar o comentário "read-before-write" de `line_buffer_2line.sv` | Documentação do RTL (sem mudar lógica) |
-| 3 | Re-síntese e decisão do SDC | Síntese |
-| 4 | `ramstyle` de `skid_fifo2`; `mem2` em MLAB | Área |
-| 5 | Executar `test_postsynth_sobel.py` na netlist | Verificação |
+| 3 | Re-síntese e decisão do SDC | **Diferido (D-11)** |
+| 4 | `ramstyle` de `skid_fifo2`; `mem2` em MLAB | **Diferido (D-11)** |
+| 5 | Executar `test_postsynth_sobel.py` na netlist | **Diferido (D-11)** |
 | 6 | Migrar `COCOTB_TESTCASE` (obsoleto no cocotb 2.1.0) | Infraestrutura |
-| 7 | Potência; Vivado | Caracterização |
+| 7 | Potência; Vivado | **Diferido (D-11)** |
 | 8 | Especificar interface MMIO (contrato A, saída sem `ready`, `o_status`) | Integração |
 | 9 | Endurecer escrita de `line_window_skid` (opcional) | Robustez |
 | 10 | Reavaliar porta `o_col` (economiza ≈ `$clog2(W)` FFs), contador de posição vs. contagem (Pipeline) | Arquitetura futura |

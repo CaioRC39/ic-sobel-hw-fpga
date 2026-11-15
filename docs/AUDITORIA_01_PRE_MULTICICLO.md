@@ -252,7 +252,7 @@ Numeração **sequencial global**. Achados antigos preservados, com status atual
 | F-09 | Verilator `-Wall`: 5 warnings (`WIDTHEXPAND`, `WIDTHTRUNC`, `SYNCASYNCNET`, `PINMISSING`) | Baixa–Média | **Fechado** (A-09/A-10; reconfirmado 0 warnings no 5.054) |
 | F-10 | "~11 ciclos/pixel" em `ARQUITETURA_MULTICICLO.md` §1.1 | Baixa | **Fechado**; superado por 16 ciclos/pixel (v2.0) |
 | F-11 | `CLAUDE.md` citava `plano_ic_submissao.md` inexistente | Baixa | **Fechado** |
-| F-12 | `ESPECIFICACAO_SOBEL.md` §3.2 diverge do RTL | Média | **Aberto** — correção na Entrega 4 (condição C5) |
+| F-12 | `ESPECIFICACAO_SOBEL.md` §3.2 diverge do RTL | Média | **Fechado (2026-11-14)** |
 | F-13 | Auditoria contava 5 corrotinas para `test_window_3x3.py`; eram 6 | Baixa | **Corrigido**. Ver F-18 |
 | F-14 | Verible line-length default 100 em `sobel_multicycle.sv:272` | Baixa | **Fechado** (falso positivo de invocação, limite do projeto é 120) |
 | F-15 | Possível sintaxe incorreta do comando de lint em `ESPECIFICACAO_SOBEL.md` §6.1 (`--indentation_size`) | Baixa | **[não verificado]**. Conferir com `verible-verilog-format --helpfull \| grep -i indent`; corrigir na Entrega 4 |
@@ -262,9 +262,9 @@ Numeração **sequencial global**. Achados antigos preservados, com status atual
 | F-19 | Ressalva 3: `win_cnt_r` desalinha permanentemente se uma janela se perde a montante de `window_3x3`; perda silenciosa | Média | **Mitigado** por `o_status` (bits E1/E2/D). Limites do modelo de falhas na §17 |
 | F-20 | Ressalva 1: `i_valid` com `o_ready=0` perde o pixel em silêncio | Baixa | **Fechado** como contrato A (medido); requisito para o MMIO |
 | F-21 | Overflow de `skid_fifo2` após integrar `line_window_skid` | Alta | **Corrigido** (A3, 2 bugs reais: `win_ready` no gating; `o_room` defasado) |
-| F-22 | Síntese: Fmax 98,05 MHz, slack −0,199 ns vs 100 MHz; 2 M10K em `skid_fifo2`; `mem2` em MLAB; números **anteriores à slot extra** de `mem1` | Média | **Aberto — condição C2** |
+| F-22 | Síntese: Fmax 98,05 MHz, slack −0,199 ns vs 100 MHz; 2 M10K em `skid_fifo2`; `mem2` em MLAB; números **anteriores à slot extra** de `mem1` | Média | **Diferido (D-11)**: refazer na etapa de FPGA |
 | F-23 | Documentação defasada: `STATUS.md`, `ARQUITETURA_MULTICICLO.md`, menções ao multiciclo em Pipeline/Paralela/`ESPECIFICACAO` | Média | **Em fechamento** (Entregas 1, 2 e 4). `ARQUITETURA_MULTICICLO.md` v2.0 e `STATUS.md` entregues |
-| F-24 | Comentário "CONTRATO DE SÍNTESE — read-before-write" em `line_buffer_2line.sv` descreve a versão anterior | Baixa | **Aberto** (só comentário) |
+| F-24 | Comentário "CONTRATO DE SÍNTESE — read-before-write" em `line_buffer_2line.sv` descreve a versão anterior | Baixa | **Fechado (2026-11-14)** |
 | F-25 | `COCOTB_TESTCASE` obsoleto no cocotb 2.1.0; `run_isolated` ainda o define | Baixa | **Aberto** |
 | F-26 | **Perda de registro:** o texto de Q-01 a Q-04 (e possivelmente de outras partes da versão de 2026-08-10) nunca foi commitado; o documento dizia "preservá-las" sem que existissem no repositório. Confirmado por `git log -p`. O arquivo tem **um único commit** (`4f7149c`) até 2026-11-08: as revisões de 08-10 a 08-13 existem só como o snapshot desse commit, e as linhas de histórico da §18 anteriores a ele são registro documental, não recuperável pelo git | Baixa | **Fechado** como lição de processo (apêndice, item 8). As 4 questões foram encerradas por perda de registro (§14) |
 
@@ -306,6 +306,13 @@ Decisões D-01 a D-03 (agosto) e D-04 foram preservadas; D-05 a D-10 completam o
 - Alternativas: (a) funcional e verificação, com síntese como condição herdada; (b) exigir também re-síntese e decisão do SDC.
 - Decisão: **(a)**. Re-síntese é caracterização, não corretude. As condições C2 e C3 ficam explícitas no gate.
 
+**D-11 (2026-11-14) — Síntese adiada para a implementação em FPGA.**
+- Alternativas: (a) re-sintetizar o multiciclo agora (C2) e simular a netlist (C3); (b) adiar a caracterização para a etapa de implementação em FPGA, sintetizando as 3 arquiteturas na mesma sessão.
+- Decisão: **(b)**, por escolha do autor.
+- Justificativa: a comparação final exige a mesma ferramenta e o mesmo dispositivo para as três arquiteturas; sintetizar só o multiciclo agora geraria um número que teria de ser refeito. Re-síntese é caracterização, não corretude (D-10).
+- Consequência: os números do Quartus (4.601 ALMs, Fmax 98,05 MHz, slack −0,199 ns) ficam como **dado histórico anterior à correção de `mem1`**. Não devem ser citados como resultado final.
+- Condição que reabre o gate: a síntese futura revelar mudança de comportamento funcional (critério iii, §17).
+
 ---
 
 ## 13. Correções e ações
@@ -326,11 +333,11 @@ Decisões D-01 a D-03 (agosto) e D-04 foram preservadas; D-05 a D-10 completam o
 | A-15 | `i_tag` + comparação + `o_window_valid_geom` em `window_3x3.sv` | **Concluída** |
 | A-16 | Teste multi-frame como requisito permanente | **Concluída** |
 | **A-17** | **Restaurar os 3 testes de `window_3x3` (F-18)**, a partir de `git show d5aa31a^:tb_python/test_window_3x3.py`, adaptados às portas de tag (recalcular por **medição** a contagem de `$error` do teste sustentado) | **Pendente — C1** |
-| A-18 | Re-síntese no Quartus; decidir SDC (100 ou 90 MHz); testar `ramstyle="logic"` em `skid_fifo2` | **Pendente — C2** |
-| A-19 | Executar `test_postsynth_sobel.py` com `NETLIST=` | **Pendente — C3** |
+| A-18 | Re-síntese no Quartus; decidir SDC (100 ou 90 MHz); testar `ramstyle="logic"` em `skid_fifo2` | **Diferida (D-11)** |
+| A-19 | Executar `test_postsynth_sobel.py` com `NETLIST=` | **Diferida (D-11)** |
 | A-20 | Atualizar o comentário de `line_buffer_2line.sv` (F-24) | Pendente (baixa) |
 | A-21 | Migrar `COCOTB_TESTCASE` (F-25) | Pendente (baixa) |
-| A-22 | Corrigir `ESPECIFICACAO_SOBEL.md`, e menções ao multiciclo em Pipeline/Paralela (F-12, F-15, F-23) | **Pendente — C5** (Entrega 4) |
+| A-22 | Corrigir `ESPECIFICACAO_SOBEL.md`, e menções ao multiciclo em Pipeline/Paralela (F-12, F-15, F-23) | **Concluída (2026-11-14)** |
 
 ---
 
@@ -376,7 +383,7 @@ Dois pontos impedem um "GO" simples, e nenhum deles é um defeito funcional conh
 
 ## 17. Gate de avanço
 
-### **Status: GO WITH CONDITIONS**
+### **Status: GO** (funcional e verificação) — com C2 e C3 **diferidas** (D-11) e C4 **permanente**
 
 **Para declarar "multiciclo fechado" (funcional e verificação), nos termos de D-10:** **GO.** O RTL, os testes e a cobertura sustentam o fechamento. O Pipeline pode começar.
 
@@ -385,10 +392,10 @@ Dois pontos impedem um "GO" simples, e nenhum deles é um defeito funcional conh
 | ID | Condição | Critério de fechamento | Bloqueia o início do Pipeline? |
 |---|---|---|---|
 | **C1** | Restaurar os 3 testes de `window_3x3` (F-18, A-17) | `grep` mostra os 3 nomes; runner passa; contagem de `$error` do teste sustentado **medida**, não presumida | **Não**, mas deve ser fechada **antes** de o Pipeline reutilizar `window_3x3` |
-| **C2** | Re-síntese e decisão do SDC (F-22, A-18) | Relatório novo com `mem1` de profundidade W+1; decisão documentada de 100 ou 90 MHz | Não |
-| **C3** | Executar a simulação da netlist (A-19) | `test_postsynth_sobel.py` passa com `NETLIST=` | Não |
+| **C2** | Re-síntese e decisão do SDC (F-22, A-18) | **DIFERIDA (D-11)**: executar na etapa de implementação em FPGA, junto com as demais arquiteturas | Não |
+| **C3** | Executar a simulação da netlist (A-19) | **DIFERIDA (D-11)**: depende do `.vo` da C2 | Não |
 | **C4** | Manter explícitos os limites de verificação (abaixo) | Registrados na `ARQUITETURA_MULTICICLO.md` §8.5; citados em qualquer resultado publicado | Não |
-| **C5** | Fechar a documentação (F-12, F-15, F-23, A-22) | `ESPECIFICACAO_SOBEL.md` e menções ao multiciclo em Pipeline/Paralela corrigidas | Não |
+| **C5** | ~~Fechar a documentação (F-12, F-15, F-23, A-22)~~ **FECHADA (2026-11-14)** | Documentos de especificação, Pipeline e Paralela corrigidos | — |
 
 **Limites declarados do que está "fechado" (C4):**
 
@@ -413,6 +420,7 @@ Dois pontos impedem um "GO" simples, e nenhum deles é um defeito funcional conh
 | 2026-08-12 | F-06/Q-05 resolvidos; corrigida a confusão de numeração entre 2 linhagens do documento | Reconciliação de estado |
 | 2026-08-13 | A-10 decidido; F-09, F-10, F-11, F-12 e F-14 tratados | Esgotar o escopo de menor severidade |
 | **2026-11-08** | **Reescrita completa e fechamento.** Registrados F-15 a F-25 e D-05 a D-10; ações A-17 a A-22; F-02, F-04, F-06, F-09 a F-11, F-14, F-16, F-17, F-20, F-21 fechados; F-18, F-22 e F-12 abertos como condições. Removido o placeholder de D-05; A-14 a A-16 movidas para a tabela. Q-01 a Q-04 encerradas por perda de registro (F-26). Gate **GO WITH CONDITIONS** | Fechamento da arquitetura multiciclo, em uma única auditoria |
+| **2026-11-14** | **C1, C5 fechadas; C2 e C3 diferidas (D-11).** Gate **GO** (funcional e verificação). Testes de `window_3x3` restaurados, canários M1 a M3, suíte 80 passed, cobertura 425/426 e 3596/3599, RTL intacto |
 
 ---
 

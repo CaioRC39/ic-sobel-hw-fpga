@@ -10,15 +10,14 @@
 
 ### Etapa atual
 
-**Fechamento formal da arquitetura multiciclo (Fase 5: documentação e gate).**
+**Multiciclo fechado (funcional e verificação). Próxima etapa: arquitetura Pipeline.**
 
 O RTL do multiciclo está **funcionalmente fechado em simulação**. Os bugs F-16 (corrida de latência entre `line_buffer_2line` e `window_3x3`) e F-17 (janelas espúrias a cada frame) foram corrigidos na fonte e validados. O que resta são **condições** do gate, não bloqueadores funcionais:
 
 | Condição | Natureza |
 |---|---|
 | Restaurar 3 testes removidos de `test_window_3x3.py` (F-18; removidos no commit `d5aa31a`) | Verificação |
-| Re-síntese no Quartus (números atuais são anteriores à correção de `mem1`) e decisão do SDC (100 ou 90 MHz) | Síntese |
-| Executar `test_postsynth_sobel.py` na netlist (sem registro de execução) | Verificação |
+| Re-síntese, SDC, netlist: **diferidos para a etapa de FPGA** (decisão D-11) | Síntese |
 | Limites de verificação declarados (frame cheio: 2 frames, `stall=0`; stall só em W ≤ 8) | Escopo |
 
 ### Próximo marco
@@ -32,8 +31,8 @@ O RTL do multiciclo está **funcionalmente fechado em simulação**. Os bugs F-1
 5. ~~Mitigar perda de dado sob rajada~~ — **obsoleto**: o gating A3 serializa as entregas; medido `max_u_skid = max_u_lw_skid = 2`, overflow 0.
 6. ~~Monitor de integridade `o_status`~~ — feito.
 7. ~~Cobertura de código~~ — feito (code 425/426, toggle 3596/3599).
-8. **Atualizar documentação e auditoria** — em andamento (`ARQUITETURA_MULTICICLO.md` v2.0 entregue; falta este `STATUS.md`, `AUDITORIA_01`, `ESPECIFICACAO_SOBEL.md`).
-9. **Gate formal** — "GO WITH CONDITIONS" (ver `docs/AUDITORIA_01_PRE_MULTICICLO.md`).
+8. ~~Atualizar documentação e auditoria~~ — feito (2026-11-14).
+9. **Gate formal: GO** (funcional e verificação); C2 e C3 diferidas.
 
 Após isso:
 
@@ -45,7 +44,7 @@ Após isso:
 
 | Arquitetura | Estado |
 |---|---|
-| Multiciclo / Sequencial | 🟢 Funcionalmente fechada em simulação; 🟡 síntese pendente de re-execução |
+| Multiciclo / Sequencial | 🟢 Funcionalmente fechada em simulação; 🟡 síntese diferida (FPGA, D-11) |
 | Pipeline | ⚪ Não iniciada (planejamento em `docs/ARQUITETURA_PIPELINE.md`, a reescrever) |
 | Paralela | ⚪ Não iniciada (planejamento em `docs/ARQUITETURA_PARALELA.md`, a reescrever) |
 
@@ -83,13 +82,9 @@ Após isso:
 
 ### Em andamento / pendente
 
-* [ ] Documentação: `STATUS.md` (este), `AUDITORIA_01`, `ESPECIFICACAO_SOBEL.md`, menções ao multiciclo em Pipeline/Paralela
-* [ ] **F-18:** restaurar `test_multiple_gap_cycles`, `test_sustained_contract_violation_detected` e `test_ready_gating_prevents_manual_gap_calculation` (adaptados às portas de tag)
-* [ ] Re-síntese pós-slot-extra; decisão do SDC; `ramstyle` de `skid_fifo2`; `mem2` em MLAB
-* [ ] Executar `test_postsynth_sobel.py` na netlist
 * [ ] Atualizar o comentário "read-before-write" de `line_buffer_2line.sv` (só comentário)
 * [ ] Migrar `COCOTB_TESTCASE` (obsoleto no cocotb 2.1.0)
-* [ ] Potência; segundo vendor (Vivado/Artix-7)
+* [ ] Diferido para a etapa de FPGA (D-11): re-síntese, SDC, `ramstyle` de `skid_fifo2`, `mem2` em MLAB, netlist, potência, Vivado
 
 ---
 

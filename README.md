@@ -349,15 +349,14 @@ A ordem e o escopo de algumas etapas poderão ser ajustados de acordo com os res
 
 ### Etapa atual
 
-**Fechamento formal da arquitetura multiciclo (Fase 5: documentação e gate).**
+**Multiciclo fechado (funcional e verificação). Próxima etapa: arquitetura Pipeline.**
 
 O RTL do multiciclo está **funcionalmente fechado em simulação**. Os bugs F-16 (corrida de latência entre `line_buffer_2line` e `window_3x3`) e F-17 (janelas espúrias a cada frame) foram corrigidos na fonte e validados. O que resta são **condições** do gate, não bloqueadores funcionais:
 
 | Condição | Natureza |
 |---|---|
 | Restaurar 3 testes removidos de `test_window_3x3.py` (F-18; removidos no commit `d5aa31a`) | Verificação |
-| Re-síntese no Quartus (números atuais são anteriores à correção de `mem1`) e decisão do SDC (100 ou 90 MHz) | Síntese |
-| Executar `test_postsynth_sobel.py` na netlist (sem registro de execução) | Verificação |
+| Re-síntese, SDC, netlist: **diferidos para a etapa de FPGA** (decisão D-11) | Síntese |
 | Limites de verificação declarados (frame cheio: 2 frames, `stall=0`; stall só em W ≤ 8) | Escopo |
 
 ### Próximo marco
@@ -371,8 +370,8 @@ O RTL do multiciclo está **funcionalmente fechado em simulação**. Os bugs F-1
 5. ~~Mitigar perda de dado sob rajada~~ — **obsoleto**: o gating A3 serializa as entregas; medido `max_u_skid = max_u_lw_skid = 2`, overflow 0.
 6. ~~Monitor de integridade `o_status`~~ — feito.
 7. ~~Cobertura de código~~ — feito (code 425/426, toggle 3596/3599).
-8. **Atualizar documentação e auditoria** — em andamento (`ARQUITETURA_MULTICICLO.md` v2.0 entregue; falta este `STATUS.md`, `AUDITORIA_01`, `ESPECIFICACAO_SOBEL.md`).
-9. **Gate formal** — "GO WITH CONDITIONS" (ver `docs/AUDITORIA_01_PRE_MULTICICLO.md`).
+8. ~~Atualizar documentação e auditoria~~ — feito (2026-11-14).
+9. **Gate formal: GO** (funcional e verificação); C2 e C3 diferidas.
 
 Após isso:
 

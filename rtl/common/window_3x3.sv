@@ -90,20 +90,20 @@ module window_3x3 #(
     parameter int DATA_WIDTH = 8,
     parameter int IMG_WIDTH  = 8
 ) (
-    input  logic                    clk,
-    input  logic                    rst_n,
-    input  logic                    i_valid,
-    input  logic [  DATA_WIDTH-1:0] i_curr,
-    input  logic [  DATA_WIDTH-1:0] i_line1,
-    input  logic [  DATA_WIDTH-1:0] i_line2,
-    input  logic                    i_curr_tag,           // ALTERADO AQUI (3-B)
-    input  logic                    i_line1_tag,          // ALTERADO AQUI (3-B)
-    input  logic                    i_line2_tag,          // ALTERADO AQUI (3-B)
-    output logic                    o_ready,  // trava ativa, ver ARQUITETURA_MULTICICLO.md secao 4.2
-    output logic                    o_valid,
-    output logic [9*DATA_WIDTH-1:0] o_window,             // vetor achatado, ver nota de layout
-    output logic                    o_tag,                // ALTERADO AQUI (3-B) - tag da linha 1
-    output logic                    o_window_valid_geom   // ALTERADO AQUI (3-B) - 1 = janela pura
+    input logic clk,
+    input logic rst_n,
+    input logic i_valid,
+    input logic [DATA_WIDTH-1:0] i_curr,
+    input logic [DATA_WIDTH-1:0] i_line1,
+    input logic [DATA_WIDTH-1:0] i_line2,
+    input logic i_curr_tag,  // ALTERADO AQUI (3-B)
+    input logic i_line1_tag,  // ALTERADO AQUI (3-B)
+    input logic i_line2_tag,  // ALTERADO AQUI (3-B)
+    output logic o_ready,  // trava ativa, ver ARQUITETURA_MULTICICLO.md secao 4.2
+    output logic o_valid,
+    output logic [9*DATA_WIDTH-1:0] o_window,  // vetor achatado, ver nota de layout
+    output logic o_tag,  // ALTERADO AQUI (3-B) - tag da linha 1
+    output logic o_window_valid_geom  // ALTERADO AQUI (3-B) - 1 = janela pura
 );
 
   localparam int ColWidth = $clog2(IMG_WIDTH);
@@ -142,9 +142,9 @@ module window_3x3 #(
       phantom_pending_r <= 1'b0;
       valid_r <= 1'b0;
       for (int i = 0; i < 3; i++) begin
-        sr_row0_r[i] <= '0;
-        sr_row1_r[i] <= '0;
-        sr_row2_r[i] <= '0;
+        sr_row0_r[i]  <= '0;
+        sr_row1_r[i]  <= '0;
+        sr_row2_r[i]  <= '0;
         tag_row0_r[i] <= 1'b0;  // ALTERADO AQUI (3-B)
         tag_row1_r[i] <= 1'b0;  // ALTERADO AQUI (3-B)
         tag_row2_r[i] <= 1'b0;  // ALTERADO AQUI (3-B)

@@ -3,11 +3,12 @@ Alternativa 3-B (i_curr_tag/i_line1_tag/i_line2_tag -> o_tag +
 o_window_valid_geom).
 
 Regressao: os testes de geometria/gap/o_ready ja existentes antes da
-3-B sao repetidos aqui com as 3 tags de entrada fixas em 0 (1 unico
-frame o tempo todo), confirmando que a adicao nao alterou nenhum
-comportamento existente (mudanca estritamente aditiva) - inclusive
-confirmando que o_window_valid_geom fica 1 em TODO ciclo o_valid=1
-nesse cenario de frame unico (nenhuma contaminacao possivel).
+3-B rodam aqui com as 3 tags de entrada fixas em 0 (1 unico frame o
+tempo todo): test_geometry_with_zero_padding, test_multiple_gap_cycles,
+test_contract_violation_detected, test_sustained_contract_violation_detected
+e test_ready_gating_prevents_manual_gap_calculation. (Os 3 ultimos de gap/
+contrato/o_ready foram removidos por engano no commit d5aa31a e restaurados
+em C1/F-18.)
 
 Testes novos (3-B): a razao de existir do mecanismo - detectar quando
 a janela contem amostras de mais de 1 frame (o_window_valid_geom=0), e
@@ -134,6 +135,44 @@ async def test_geometry_with_zero_padding(dut):
         assert got == exp, f"idx={idx}: obtido={got} esperado={exp}"
 
 
+# ALTERADO AQUI (C1/F-18): restaurado de d5aa31a^; unica adaptacao = _step devolve 4 valores
+@cocotb.test()
+async def test_multiple_gap_cycles(dut):
+    """O contrato de interface exige >=1 ciclo de gap entre linhas -
+    isso NAO significa 'exatamente 1'. Alimenta 3 ciclos de gap em vez
+    de 1 e confirma que a geometria continua correta (o modulo deve
+    tolerar gaps maiores que o minimo, nao so o caso exato)."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await _reset(dut)
+
+    n_rows = 3
+    image = (np.arange(1, n_rows * IMG_WIDTH + 1) % 251).reshape(n_rows, IMG_WIDTH)
+
+    captured = []
+    for row in range(n_rows):
+        for col in range(IMG_WIDTH):
+            curr = int(image[row, col])
+            line1 = int(image[row - 1, col]) if row >= 1 else 0
+            line2 = int(image[row - 2, col]) if row >= 2 else 0
+            out_valid, out_window, _, _ = await _step(dut, 1, curr, line1, line2)
+            if out_valid:
+                captured.append(out_window)
+
+        for _ in range(3):  # 3 ciclos de gap em vez de 1
+            out_valid, out_window, _, _ = await _step(dut, 0, 0, 0, 0)
+            if out_valid:
+                captured.append(out_window)
+
+    captured = captured[IMG_WIDTH:]
+    expected = _build_reference_windows(image)
+
+    assert len(captured) == len(expected), (
+        f"com 3 ciclos de gap: {len(captured)} janelas capturadas, esperado {len(expected)}"
+    )
+    for idx, (got, exp) in enumerate(zip(captured, expected)):
+        assert got == exp, f"idx={idx}: obtido={got} esperado={exp}"
+
+
 @cocotb.test()
 async def test_contract_violation_detected(dut):
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
@@ -141,6 +180,22 @@ async def test_contract_violation_detected(dut):
     for row in range(2):
         for col in range(IMG_WIDTH):
             await _step(dut, 1, curr=row * 10 + col, line1=0, line2=0)
+
+
+# ALTERADO AQUI (C1/F-18): restaurado literalmente de d5aa31a^
+@cocotb.test()
+async def test_sustained_contract_violation_detected(dut):
+    """Viola o contrato de forma SUSTENTADA (varias linhas seguidas,
+    nunca 1 ciclo de gap em lugar nenhum) - confirma que o alarme
+    dispara repetidamente (nao so na primeira vez e depois "trava"), e
+    com a contagem exata esperada. Checagem no executor dedicado
+    `test_window_3x3_sustained_violation_runner`."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await _reset(dut)
+    n_rows = 5
+    for row in range(n_rows):
+        for col in range(IMG_WIDTH):
+            await _step(dut, 1, curr=(row * IMG_WIDTH + col) % 256, line1=0, line2=0)
 
 
 # -----------------------------------------------------------------------
@@ -256,12 +311,78 @@ async def test_phantom_cycle_does_not_spuriously_invalidate_geom(dut):
     )
 
 
+# ALTERADO AQUI (C1/F-18): restaurado de d5aa31a^; unica adaptacao = _step devolve 4 valores
+@cocotb.test()
+async def test_ready_gating_prevents_manual_gap_calculation(dut):
+    """Prova da trava ativa (Caminho B, ver docs/ARQUITETURA_MULTICICLO.md
+    secao 4.2): alimenta o modulo SEM nenhum calculo manual de quando
+    inserir gap - simplesmente respeita o_ready a cada ciclo, do mesmo
+    jeito que um consumidor real (ex: sobel_multicycle) vai fazer. Se
+    o_ready realmente reflete o contrato interno corretamente, a
+    geometria das janelas produzidas deve ser IDENTICA a
+    test_geometry_with_zero_padding (que calcula o gap manualmente) -
+    E nenhum $error deve disparar."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await _reset(dut)
+
+    image = (np.arange(1, IMG_HEIGHT * IMG_WIDTH + 1) % 251).reshape(
+        IMG_HEIGHT, IMG_WIDTH
+    )
+    expected = _build_reference_windows(image)
+
+    captured = []
+    row, col = 0, 0
+    total_real_pixels = IMG_HEIGHT * IMG_WIDTH
+    fed = 0
+
+    # Nao ha NENHUMA logica de "ultima coluna -> insere gap" aqui -
+    # o teste so olha o_ready a cada ciclo, exatamente como um
+    # consumidor real deveria fazer.
+    while fed < total_real_pixels:
+        await ReadOnly()
+        ready = int(dut.o_ready.value)
+        await NextTimeStep()
+
+        if ready:
+            curr = int(image[row, col])
+            line1 = int(image[row - 1, col]) if row >= 1 else 0
+            line2 = int(image[row - 2, col]) if row >= 2 else 0
+            out_valid, out_window, _, _ = await _step(dut, 1, curr, line1, line2)
+            fed += 1
+            col += 1
+            if col == IMG_WIDTH:
+                col = 0
+                row += 1
+        else:
+            # respeita o_ready=0: nao apresenta pixel novo neste ciclo
+            out_valid, out_window, _, _ = await _step(dut, 0, 0, 0, 0)
+
+        if out_valid:
+            captured.append(out_window)
+
+    # drena o que ainda estiver "em transito" apos o ultimo pixel real
+    for _ in range(5):
+        out_valid, out_window, _, _ = await _step(dut, 0, 0, 0, 0)
+        if out_valid:
+            captured.append(out_window)
+
+    captured = captured[IMG_WIDTH:]  # mesmo descarte de test_geometry_with_zero_padding
+
+    assert len(captured) == len(expected), (
+        f"respeitando so o_ready (sem calculo manual de gap): "
+        f"{len(captured)} janelas capturadas, esperado {len(expected)}"
+    )
+    for idx, (got, exp) in enumerate(zip(captured, expected)):
+        assert got == exp, f"idx={idx}: obtido={got} esperado={exp}"
+
+
 def test_window_3x3_runner():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sim_build = os.path.join(proj_root, "sim", "sim_build_window_3x3")
 
     run_isolated(
-        "test_reset_state,test_geometry_with_zero_padding,"
+        "test_reset_state,test_geometry_with_zero_padding,test_multiple_gap_cycles,"
+        "test_ready_gating_prevents_manual_gap_calculation,"
         "test_o_tag_reflects_center_row,"
         "test_window_valid_geom_detects_vertical_frame_boundary,"
         "test_phantom_cycle_does_not_spuriously_invalidate_geom",
@@ -297,6 +418,31 @@ def test_window_3x3_contract_violation_runner():
     )
 
 
+# ALTERADO AQUI (C1/F-18): restaurado de d5aa31a^; capture_errors manual -> expect_errors (P15)
+def test_window_3x3_sustained_violation_runner():
+    """Executor dedicado para test_sustained_contract_violation_detected."""
+    proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sim_build = os.path.join(proj_root, "sim", "sim_build_window_3x3_sustained")
+
+    n_rows = 5
+    expected_violations = n_rows - 1  # 1 violacao por fronteira interna de linha (valor de agosto, A CONFIRMAR POR MEDICAO)
+
+    run_isolated(
+        "test_sustained_contract_violation_detected",
+        verilog_sources=[
+            os.path.join(proj_root, "rtl", "common", "window_3x3.sv"),
+        ],
+        includes=[os.path.join(proj_root, "include")],
+        toplevel="window_3x3",
+        module="test_window_3x3",
+        parameters={"DATA_WIDTH": DATA_WIDTH, "IMG_WIDTH": IMG_WIDTH},
+        compile_args=["-g2012", "-Wall"],
+        sim_build=sim_build,
+        expect_errors=expected_violations,
+    )
+
+
 if __name__ == "__main__":
     test_window_3x3_runner()
     test_window_3x3_contract_violation_runner()
+    test_window_3x3_sustained_violation_runner()
